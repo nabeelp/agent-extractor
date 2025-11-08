@@ -1,5 +1,92 @@
 # Document Extraction Agent with MCP and Azure Document Intelligence
 
+## Task List
+
+Track implementation progress for the agent-extractor solution. Update status as tasks are completed.
+
+### Phase 1: Project Setup
+- [ ] Initialize Python project structure (venv, requirements.txt, pyproject.toml)
+- [ ] Install agent-framework-azure-ai --pre and core dependencies
+- [ ] Create directory structure (src/, src/config/, src/extraction/, src/agents/, src/interfaces/)
+- [ ] Set up .gitignore for Python (.venv, __pycache__, *.pyc, .env)
+- [ ] Create README.md with setup instructions
+
+### Phase 2: Configuration System
+- [ ] Create config.json with default values (thresholds, endpoints, ports)
+- [ ] Implement src/config/settings.py configuration loader
+- [ ] Add Pydantic models for type-safe configuration
+- [ ] Add .env support for secrets (keys, connection strings)
+- [ ] Add managed identity authentication support
+- [ ] Validate configuration on startup
+
+### Phase 3: Core Extraction Modules
+- [ ] Implement src/extraction/router.py (document type analysis)
+- [ ] Implement src/extraction/document_parser.py (base64 decoding, PDF/DOCX/image parsing)
+- [ ] Implement src/extraction/extractor.py (Azure AI Foundry + Document Intelligence integration)
+- [ ] Implement src/extraction/validator.py (confidence scoring with gpt-4o-mini)
+- [ ] Add buffer size validation
+- [ ] Add error handling and retry logic with exponential backoff
+- [ ] Add unit tests for each extraction module
+
+### Phase 4: Agent Implementation
+- [ ] Implement src/agents/extractor_agent.py (Microsoft Agent Framework agent)
+- [ ] Implement src/agents/validator_agent.py (validation agent with handoff pattern)
+- [ ] Implement src/agents/orchestrator.py (sequential workflow coordinator)
+- [ ] Add state management for multi-page processing
+- [ ] Add agent error handling and logging
+- [ ] Test sequential workflow: Router → Extractor → Validator
+- [ ] Add integration tests for agent workflows
+
+### Phase 5: MCP Interface
+- [ ] Implement src/interfaces/mcp_server.py (HTTP/WebSocket server)
+- [ ] Define extract_document_data tool schema (input/output)
+- [ ] Integrate MCP server with orchestrator agent
+- [ ] Add request validation and buffer size checks
+- [ ] Add health check endpoint
+- [ ] Add timeout handling for long-running extractions
+- [ ] Test MCP tool with Claude Desktop or MCP client
+- [ ] Add MCP server documentation
+
+### Phase 6: A2A Interface
+- [ ] Implement src/interfaces/agent_server.py (distributed runtime)
+- [ ] Define agent events (document.extraction.requested/completed/failed)
+- [ ] Add state persistence for async operations
+- [ ] Add event-driven message handling
+- [ ] Test A2A communication patterns
+- [ ] Add A2A agent documentation
+
+### Phase 7: Azure Deployment
+- [ ] Create Dockerfile with multi-stage build
+- [ ] Create .dockerignore for Python projects
+- [ ] Test local Docker build and run
+- [ ] Create azure-container-app.yaml manifest
+- [ ] Configure dual ingress (ports 8000, 8001)
+- [ ] Add health probes (liveness, readiness)
+- [ ] Configure auto-scaling rules
+- [ ] Set up managed identity in Azure
+- [ ] Deploy to Azure Container Apps
+- [ ] Test deployed endpoints (MCP and A2A)
+
+### Phase 8: Testing & Documentation
+- [ ] Add comprehensive unit tests (pytest)
+- [ ] Add integration tests for end-to-end workflows
+- [ ] Add sample documents for testing (PDF, DOCX, PNG, JPG)
+- [ ] Create usage examples for MCP tool
+- [ ] Create usage examples for A2A agent
+- [ ] Document configuration options
+- [ ] Add troubleshooting guide
+- [ ] Add API reference documentation
+
+### Phase 9: Enhancements (Future)
+- [ ] Add support for Excel (XLSX) documents
+- [ ] Add support for TXT and HTML documents
+- [ ] Implement batch processing for multiple documents
+- [ ] Add streaming results for large documents
+- [ ] Add caching layer for repeated extractions
+- [ ] Add audit logging and telemetry (Application Insights)
+- [ ] Add multi-language document support
+- [ ] Fine-tune custom extraction models for specific document types
+
 ## Overview
 
 Build a greenfield document extraction agent using Microsoft Agent Framework (Python) that exposes both MCP tools and A2A agent interfaces for extracting structured data from multi-format documents (PDF, DOCX, images). The agent will intelligently route extraction between LLM-based and Azure Document Intelligence methods, then validate results with confidence scoring, deployed as an Azure Container App.
