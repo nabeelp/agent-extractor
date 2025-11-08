@@ -16,10 +16,10 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Create README.md with setup instructions
 
 ### Phase 2: MVP Configuration (Basic)
-- [ ] Create minimal config.json with essential values (Azure endpoints, single model deployment)
-- [ ] Implement basic src/config/settings.py configuration loader
-- [ ] Add .env support for API keys (no managed identity yet)
-- [ ] Simple configuration validation
+- [x] Create minimal config.json with essential values (Azure endpoints, single model deployment)
+- [x] Implement basic src/config/settings.py configuration loader
+- [x] Add Entra ID (Azure AD) authentication with DefaultAzureCredential
+- [x] Simple configuration validation
 
 ### Phase 3: MVP Extraction (Single Format - PDF Only)
 - [ ] Implement src/extraction/document_parser.py (base64 decoding, PDF text extraction only)
@@ -52,7 +52,7 @@ Track implementation progress for the agent-extractor solution. Update status as
 
 ### Phase 7: Enhanced Configuration
 - [ ] Add Pydantic models for type-safe configuration
-- [ ] Add managed identity authentication support
+- [ ] Enhance Entra ID authentication with managed identity for production
 - [ ] Add configuration validation on startup with detailed error messages
 - [ ] Support environment variable overrides for all config values
 
@@ -217,7 +217,9 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
 1. **Azure AI Foundry Project**: Create or use existing project in Azure portal
 2. **Model Deployments**: Deploy gpt-4o and gpt-4o-mini models in your Azure AI Foundry project
 3. **Azure Document Intelligence**: Create Azure Document Intelligence resource
-4. **Managed Identity**: Configure for secure service-to-service authentication (recommended for production)
+4. **Entra ID Authentication**: Solution uses Entra ID (Azure AD) authentication via DefaultAzureCredential
+   - For local development: Run `az login` to authenticate
+   - For production: Configure managed identity in Azure Container Apps
 5. **VS Code Extension**: Install Azure AI Foundry extension for resource management
    - Open Command Palette and run: `workbench.view.extension.azure-ai-foundry`
 

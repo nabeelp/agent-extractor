@@ -1,0 +1,11 @@
+{
+  "minConfidenceThreshold": 0.8,
+  "maxBufferSizeMB": 10,
+  "azureAIFoundry": {
+    "projectEndpoint": "https://YOUR_PROJECT.api.azureml.ms",
+    "extractionModel": "gpt-4o"
+  },
+  "serverPorts": {
+    "mcp": 8000
+  }
+}

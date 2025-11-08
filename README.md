@@ -28,7 +28,9 @@ Document extraction agent using Microsoft Agent Framework with MCP and A2A inter
    - `gpt-4o` (extraction with vision capabilities)
    - `gpt-4o-mini` (validation and confidence scoring)
 2. **Azure Document Intelligence** resource
-3. **Managed Identity** (recommended for production)
+3. **Entra ID Authentication**:
+   - Local development: `az login` for user authentication
+   - Production: Managed identity for secure service-to-service authentication
 
 ### Development Tools
 - Python 3.11 or higher
@@ -60,32 +62,37 @@ uv pip install agent-framework-azure-ai --pre
 
 **Note**: `uv` automatically creates and manages the virtual environment in `.venv/`
 
-### 4. Configure Environment
+### 3. Authenticate with Azure
 
-Create a `.env` file in the project root:
+```bash
+# Login to Azure with Entra ID (Azure AD)
+az login
 
-```env
-# Azure AI Foundry
-AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://YOUR_PROJECT.api.azureml.ms
-AZURE_AI_FOUNDRY_CONNECTION_STRING=YOUR_CONNECTION_STRING
-AZURE_AI_FOUNDRY_EXTRACTION_MODEL=gpt-4o
-AZURE_AI_FOUNDRY_VALIDATION_MODEL=gpt-4o-mini
-
-# Azure Document Intelligence
-AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://YOUR_ENDPOINT.cognitiveservices.azure.com/
-AZURE_DOCUMENT_INTELLIGENCE_KEY=YOUR_KEY
-
-# Authentication (optional - use managed identity in production)
-USE_MANAGED_IDENTITY=false
-
-# Server Configuration
-MCP_SERVER_PORT=8000
-A2A_SERVER_PORT=8001
-MIN_CONFIDENCE_THRESHOLD=0.8
-MAX_BUFFER_SIZE_MB=10
+# Optional: Set specific tenant if you have multiple
+az login --tenant YOUR_TENANT_ID
 ```
 
-Alternatively, copy and edit `config.json` for default values.
+### 4. Configure Environment
+
+Create a `.env` file in the project root (optional - most settings in `config.json`):
+
+```env
+# Authentication: Uses Entra ID (Azure AD) via DefaultAzureCredential
+# Local: Ensure you've run 'az login'
+# Production: Managed identity configured in Azure Container Apps
+
+# Optional: Specify tenant ID if using multiple tenants
+# AZURE_TENANT_ID=your_tenant_id
+
+# Optional: Override config.json values
+# MCP_SERVER_PORT=8000
+# MIN_CONFIDENCE_THRESHOLD=0.8
+# MAX_BUFFER_SIZE_MB=10
+```
+
+Edit `config.json` to set your Azure AI Foundry endpoint and model deployment names.
+
+**Note**: This solution uses **Entra ID authentication** (no API keys required). Ensure you have appropriate Azure RBAC permissions on the AI Foundry project.
 
 ## Usage
 
@@ -231,7 +238,7 @@ docker run -p 8000:8000 -p 8001:8001 \
 # Push to Azure Container Registry
 az acr build --registry YOUR_ACR --image agent-extractor:latest .
 
-# Deploy with managed identity
+# Deploy with managed identity for Entra ID authentication
 az containerapp create \
   --name agent-extractor \
   --resource-group YOUR_RG \
@@ -239,10 +246,7 @@ az containerapp create \
   --image YOUR_ACR.azurecr.io/agent-extractor:latest \
   --ingress external \
   --target-port 8000 \
-  --user-assigned YOUR_MANAGED_IDENTITY_ID \
-  --env-vars \
-    AZURE_AI_FOUNDRY_ENDPOINT=YOUR_ENDPOINT \
-    USE_MANAGED_IDENTITY=true
+  --user-assigned YOUR_MANAGED_IDENTITY_ID
 ```
 
 See [AGENTS.md](AGENTS.md) for detailed deployment instructions.
