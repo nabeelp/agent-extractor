@@ -1,7 +1,7 @@
 """Main entry point for agent-extractor application."""
 
 import sys
-from src.interfaces.mcp_server import start_server
+from .interfaces.mcp_server import start_server
 
 
 def main():
