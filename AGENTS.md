@@ -34,11 +34,11 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Basic logging with print statements
 
 ### Phase 5: MVP MCP Interface (HTTP Only)
-- [ ] Implement src/interfaces/mcp_server.py (FastAPI HTTP endpoint only, no WebSocket)
-- [ ] Define extract_document_data tool schema (simplified input/output)
-- [ ] Integrate MCP server with extractor agent
-- [ ] Basic health check endpoint (return 200 OK)
-- [ ] Test MCP tool with simple HTTP client (curl/Postman)
+- [x] Implement src/interfaces/mcp_server.py (FastAPI HTTP endpoint only, no WebSocket)
+- [x] Define extract_document_data tool schema (simplified input/output)
+- [x] Integrate MCP server with extractor agent
+- [x] Basic health check endpoint (return 200 OK)
+- [x] Test MCP tool with simple HTTP client (curl/Postman)
 
 ### Phase 6: MVP Testing & Documentation
 - [ ] Manual testing with sample PDF documents

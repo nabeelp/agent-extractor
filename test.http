@@ -1,0 +1,154 @@
+### Agent Extractor MCP Server - REST Client Tests
+### Requires: REST Client extension for VS Code
+### https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+
+@baseUrl = http://localhost:8000
+
+###############################################
+# Health Check
+###############################################
+
+### Get server health status
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+###############################################
+# Extract Document Data - Simple Invoice
+###############################################
+
+### Extract invoice number from sample PDF
+POST {{baseUrl}}/extract_document_data
+Content-Type: application/json
+
+{
+  "documentBase64": "JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlIC9QYWdlCi9QYXJlbnQgMSAwIFIKL01lZGlhQm94IFswIDAgNjEyIDc5Ml0KL0NvbnRlbnRzIDQgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDUgMCBSCj4+Cj4+Cj4+CmVuZG9iago0IDAgb2JqCjw8L0xlbmd0aCA0Nj4+CnN0cmVhbQpCVAovRjEgMjQgVGYKMTAwIDcwMCBUZAooSW52b2ljZSAjMTIzNDUpIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PC9UeXBlIC9Gb250Ci9TdWJ0eXBlIC9UeXBlMQovQmFzZUZvbnQgL0hlbHZldGljYQo+PgplbmRvYmoKMSAwIG9iago8PC9UeXBlIC9QYWdlcwovS2lkcyBbMyAwIFJdCi9Db3VudCAxCj4+CmVuZG9iagoyIDAgb2JqCjw8L1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDEgMCBSCj4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAyOTQgMDAwMDAgbiAKMDAwMDAwMDM1MSAwMDAwMCBuIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAxMzIgMDAwMDAgbiAKMDAwMDAwMDIyOCAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNgovUm9vdCAyIDAgUgo+PgpzdGFydHhyZWYKNDAwCiUlRU9G",
+  "fileType": "pdf",
+  "dataElements": [
+    {
+      "name": "invoiceNumber",
+      "description": "The invoice number from the document",
+      "format": "string",
+      "required": true
+    }
+  ]
+}
+
+###############################################
+# Extract Document Data - Multiple Fields
+###############################################
+
+### Extract multiple fields from invoice
+POST {{baseUrl}}/extract_document_data
+Content-Type: application/json
+
+{
+  "documentBase64": "JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlIC9QYWdlCi9QYXJlbnQgMSAwIFIKL01lZGlhQm94IFswIDAgNjEyIDc5Ml0KL0NvbnRlbnRzIDQgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDUgMCBSCj4+Cj4+Cj4+CmVuZG9iago0IDAgb2JqCjw8L0xlbmd0aCA0Nj4+CnN0cmVhbQpCVAovRjEgMjQgVGYKMTAwIDcwMCBUZAooSW52b2ljZSAjMTIzNDUpIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iago8PC9UeXBlIC9Gb250Ci9TdWJ0eXBlIC9UeXBlMQovQmFzZUZvbnQgL0hlbHZldGljYQo+PgplbmRvYmoKMSAwIG9iago8PC9UeXBlIC9QYWdlcwovS2lkcyBbMyAwIFJdCi9Db3VudCAxCj4+CmVuZG9iagoyIDAgb2JqCjw8L1R5cGUgL0NhdGFsb2cKL1BhZ2VzIDEgMCBSCj4+CmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAyOTQgMDAwMDAgbiAKMDAwMDAwMDM1MSAwMDAwMCBuIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAxMzIgMDAwMDAgbiAKMDAwMDAwMDIyOCAwMDAwMCBuIAp0cmFpbGVyCjw8L1NpemUgNgovUm9vdCAyIDAgUgo+PgpzdGFydHhyZWYKNDAwCiUlRU9G",
+  "fileType": "pdf",
+  "dataElements": [
+    {
+      "name": "invoiceNumber",
+      "description": "The invoice number from the document",
+      "format": "string",
+      "required": true
+    },
+    {
+      "name": "totalAmount",
+      "description": "The total amount due on the invoice",
+      "format": "number",
+      "required": true
+    },
+    {
+      "name": "dueDate",
+      "description": "The payment due date",
+      "format": "date",
+      "required": false
+    }
+  ]
+}
+
+###############################################
+# Error Cases
+###############################################
+
+### Test with invalid file type
+POST {{baseUrl}}/extract_document_data
+Content-Type: application/json
+
+{
+  "documentBase64": "JVBERi0xLjQK...",
+  "fileType": "docx",
+  "dataElements": [
+    {
+      "name": "test",
+      "description": "Test field",
+      "format": "string",
+      "required": false
+    }
+  ]
+}
+
+### Test with invalid base64
+POST {{baseUrl}}/extract_document_data
+Content-Type: application/json
+
+{
+  "documentBase64": "invalid-base64-data!!!",
+  "fileType": "pdf",
+  "dataElements": [
+    {
+      "name": "test",
+      "description": "Test field",
+      "format": "string",
+      "required": false
+    }
+  ]
+}
+
+### Test with missing required field
+POST {{baseUrl}}/extract_document_data
+Content-Type: application/json
+
+{
+  "documentBase64": "JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlIC9QYWdlCi9QYXJlbnQgMSAwIFIKL01lZGlhQm94IFswIDAgNjEyIDc5Ml0KL0NvbnRlbnRzIDQgMCBSCi9SZXNvdXJjZXMgPDwKL0ZvbnQgPDwKL0YxIDUgMCBSCj4+Cj4+Cj4+CmVuZG9iago0IDAgb2JqCjw8L0xlbmd0aCAyOD4+CnN0cmVhbQpCVAovRjEgMTIgVGYKMTAwIDcwMCBUZAooRW1wdHkgUERGKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwvVHlwZSAvRm9udAovU3VidHlwZSAvVHlwZTEKL0Jhc2VGb250IC9IZWx2ZXRpY2EKPj4KZW5kb2JqCjEgMCBvYmoKPDwvVHlwZSAvUGFnZXMKL0tpZHMgWzMgMCBSXQovQ291bnQgMQo+PgplbmRvYmoKMiAwIG9iago8PC9UeXBlIC9DYXRhbG9nCi9QYWdlcyAxIDAgUgo+PgplbmRvYmoKeHJlZgowIDYKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMjc2IDAwMDAwIG4gCjAwMDAwMDAzMzMgMDAwMDAgbiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMTMyIDAwMDAwIG4gCjAwMDAwMDAyMTAgMDAwMDAgbiAKdHJhaWxlcgo8PC9TaXplIDYKL1Jvb3QgMiAwIFIKPj4Kc3RhcnR4cmVmCjM4MgolJUVPRg==",
+  "fileType": "pdf",
+  "dataElements": [
+    {
+      "name": "nonExistentField",
+      "description": "A field that does not exist in the document",
+      "format": "string",
+      "required": true
+    }
+  ]
+}
+
+###############################################
+# Custom Document (Replace with your own)
+###############################################
+
+### Extract from your own PDF
+# 1. Convert your PDF to base64: 
+#    PowerShell: [Convert]::ToBase64String([IO.File]::ReadAllBytes("your-file.pdf"))
+#    Linux/Mac: base64 your-file.pdf
+# 2. Replace documentBase64 below with your base64 string
+# 3. Customize dataElements for your document
+POST {{baseUrl}}/extract_document_data
+Content-Type: application/json
+
+{
+  "documentBase64": "PASTE_YOUR_BASE64_HERE",
+  "fileType": "pdf",
+  "dataElements": [
+    {
+      "name": "yourField1",
+      "description": "Description of what to extract",
+      "format": "string",
+      "required": true
+    },
+    {
+      "name": "yourField2",
+      "description": "Another field to extract",
+      "format": "number",
+      "required": false
+    }
+  ]
+}
