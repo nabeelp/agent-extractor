@@ -5,7 +5,7 @@ description = "Document extraction agent using Microsoft Agent Framework with MC
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    { name = "Nabeel Petersen", email = "nabeel@brainjar.co.za" }
+    { name = "Nabeel Prior", email = "nabeel@brainjar.co.za" }
 ]
 keywords = ["agent", "document-extraction", "mcp", "azure-ai", "agent-framework"]
 classifiers = [
@@ -19,12 +19,19 @@ classifiers = [
 dependencies = [
     "agent-framework-azure-ai",
     "azure-ai-formrecognizer>=3.3.0",
+    "azure-identity>=1.15.0",
+    "azure-ai-inference>=1.0.0b1",
     "PyPDF2>=3.0.0",
     "python-docx>=1.1.0",
     "Pillow>=10.0.0",
+    "pypdf>=3.17.0",
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
+    "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
@@ -37,8 +44,8 @@ dev = [
 ]
 
 [build-system]
-requires = ["setuptools>=68.0.0", "wheel"]
-build-backend = "setuptools.build_backend"
+requires = ["setuptools>=68.0.0", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
 
 [tool.black]
 line-length = 100
@@ -57,3 +64,8 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.uv]
+# Allow pre-release versions for Microsoft Agent Framework (currently in preview)
+prerelease = "allow"
+
