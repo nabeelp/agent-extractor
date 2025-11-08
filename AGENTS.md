@@ -28,10 +28,10 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Single-page PDF support only
 
 ### Phase 4: MVP Agent (Single Agent)
-- [ ] Implement src/agents/extractor_agent.py (basic Microsoft Agent Framework agent)
-- [ ] Simple extraction workflow (parser → extractor)
-- [ ] Return extracted data as JSON (no validation, no confidence scoring)
-- [ ] Basic logging with print statements
+- [x] Implement src/agents/extractor_agent.py (basic Microsoft Agent Framework agent)
+- [x] Simple extraction workflow (parser → extractor)
+- [x] Return extracted data as JSON (no validation, no confidence scoring)
+- [x] Basic logging with print statements
 
 ### Phase 5: MVP MCP Interface (HTTP Only)
 - [ ] Implement src/interfaces/mcp_server.py (FastAPI HTTP endpoint only, no WebSocket)
