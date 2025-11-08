@@ -4,8 +4,6 @@ import json
 from typing import Any, Dict, List
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage
-from azure.core.credentials import AzureKeyCredential
-from azure.identity import DefaultAzureCredential
 
 from ..config.settings import Settings
 
@@ -22,12 +20,10 @@ class Extractor:
         self.settings = settings
         
         # Initialize Azure AI Inference client with Entra ID authentication
-        # Note: Using get_token() to get bearer token from DefaultAzureCredential
-        token = settings.azure_credential.get_token("https://cognitiveservices.azure.com/.default")
-        
+        # DefaultAzureCredential handles token refresh automatically
         self.client = ChatCompletionsClient(
             endpoint=settings.azure_ai_foundry_endpoint,
-            credential=AzureKeyCredential(token.token)
+            credential=settings.azure_credential
         )
     
     def extract(self, text: str, data_elements: List[Dict[str, Any]]) -> Dict[str, Any]:

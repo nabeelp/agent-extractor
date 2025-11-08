@@ -2,7 +2,7 @@
   "minConfidenceThreshold": 0.8,
   "maxBufferSizeMB": 10,
   "azureAIFoundry": {
-    "projectEndpoint": "https://YOUR_PROJECT.api.azureml.ms",
+    "projectEndpoint": "https://npaifoundry.services.ai.azure.com/api/projects/ai-nabeel-project",
     "extractionModel": "gpt-4o"
   },
   "serverPorts": {
