@@ -4,88 +4,171 @@
 
 Track implementation progress for the agent-extractor solution. Update status as tasks are completed.
 
-### Phase 1: Project Setup
+---
+
+## MVP: Minimal Viable Product (Core Functionality)
+
+### Phase 1: Project Setup ✓
 - [x] Initialize Python project structure (venv, requirements.txt, pyproject.toml)
 - [x] Install agent-framework-azure-ai --pre and core dependencies
 - [x] Create directory structure (src/, src/config/, src/extraction/, src/agents/, src/interfaces/)
 - [x] Set up .gitignore for Python (.venv, __pycache__, *.pyc, .env)
 - [x] Create README.md with setup instructions
 
-### Phase 2: Configuration System
-- [ ] Create config.json with default values (thresholds, endpoints, ports)
-- [ ] Implement src/config/settings.py configuration loader
+### Phase 2: MVP Configuration (Basic)
+- [ ] Create minimal config.json with essential values (Azure endpoints, single model deployment)
+- [ ] Implement basic src/config/settings.py configuration loader
+- [ ] Add .env support for API keys (no managed identity yet)
+- [ ] Simple configuration validation
+
+### Phase 3: MVP Extraction (Single Format - PDF Only)
+- [ ] Implement src/extraction/document_parser.py (base64 decoding, PDF text extraction only)
+- [ ] Implement src/extraction/extractor.py (gpt-4o text extraction, no vision, no Document Intelligence)
+- [ ] Basic error handling (try/catch, simple error messages)
+- [ ] Single-page PDF support only
+
+### Phase 4: MVP Agent (Single Agent)
+- [ ] Implement src/agents/extractor_agent.py (basic Microsoft Agent Framework agent)
+- [ ] Simple extraction workflow (parser → extractor)
+- [ ] Return extracted data as JSON (no validation, no confidence scoring)
+- [ ] Basic logging with print statements
+
+### Phase 5: MVP MCP Interface (HTTP Only)
+- [ ] Implement src/interfaces/mcp_server.py (FastAPI HTTP endpoint only, no WebSocket)
+- [ ] Define extract_document_data tool schema (simplified input/output)
+- [ ] Integrate MCP server with extractor agent
+- [ ] Basic health check endpoint (return 200 OK)
+- [ ] Test MCP tool with simple HTTP client (curl/Postman)
+
+### Phase 6: MVP Testing & Documentation
+- [ ] Manual testing with sample PDF documents
+- [ ] Document MVP limitations in README.md
+- [ ] Create simple usage example (HTTP POST with sample PDF)
+- [ ] Basic troubleshooting section
+
+---
+
+## Production Enhancement: Phase 1 (Robustness)
+
+### Phase 7: Enhanced Configuration
 - [ ] Add Pydantic models for type-safe configuration
-- [ ] Add .env support for secrets (keys, connection strings)
 - [ ] Add managed identity authentication support
-- [ ] Validate configuration on startup
+- [ ] Add configuration validation on startup with detailed error messages
+- [ ] Support environment variable overrides for all config values
 
-### Phase 3: Core Extraction Modules
-- [ ] Implement src/extraction/router.py (document type analysis)
-- [ ] Implement src/extraction/document_parser.py (base64 decoding, PDF/DOCX/image parsing)
-- [ ] Implement src/extraction/extractor.py (Azure AI Foundry + Document Intelligence integration)
-- [ ] Implement src/extraction/validator.py (confidence scoring with gpt-4o-mini)
-- [ ] Add buffer size validation
-- [ ] Add error handling and retry logic with exponential backoff
-- [ ] Add unit tests for each extraction module
+### Phase 8: Multi-Format Support
+- [ ] Add DOCX support to document_parser.py (python-docx)
+- [ ] Add image support (PNG, JPG) to document_parser.py (Pillow)
+- [ ] Implement src/extraction/router.py (document type detection)
+- [ ] Add Azure Document Intelligence integration for scanned/complex documents
+- [ ] Add multi-page document aggregation
 
-### Phase 4: Agent Implementation
-- [ ] Implement src/agents/extractor_agent.py (Microsoft Agent Framework agent)
-- [ ] Implement src/agents/validator_agent.py (validation agent with handoff pattern)
+### Phase 9: Validation & Confidence Scoring
+- [ ] Implement src/extraction/validator.py (gpt-4o-mini for validation)
+- [ ] Implement src/agents/validator_agent.py (validation agent)
 - [ ] Implement src/agents/orchestrator.py (sequential workflow coordinator)
-- [ ] Add state management for multi-page processing
-- [ ] Add agent error handling and logging
+- [ ] Add per-field confidence scores
+- [ ] Add required field validation against configurable threshold
 - [ ] Test sequential workflow: Router → Extractor → Validator
-- [ ] Add integration tests for agent workflows
 
-### Phase 5: MCP Interface
-- [ ] Implement src/interfaces/mcp_server.py (HTTP/WebSocket server)
-- [ ] Define extract_document_data tool schema (input/output)
-- [ ] Integrate MCP server with orchestrator agent
-- [ ] Add request validation and buffer size checks
-- [ ] Add health check endpoint
+### Phase 10: Enhanced Error Handling & Resilience
+- [ ] Add buffer size validation
+- [ ] Add retry logic with exponential backoff
 - [ ] Add timeout handling for long-running extractions
-- [ ] Test MCP tool with Claude Desktop or MCP client
-- [ ] Add MCP server documentation
+- [ ] Add detailed error messages with error codes
+- [ ] Add request validation middleware
 
-### Phase 6: A2A Interface
-- [ ] Implement src/interfaces/agent_server.py (distributed runtime)
+### Phase 11: Testing & Quality
+- [ ] Add unit tests for each extraction module (pytest)
+- [ ] Add integration tests for agent workflows
+- [ ] Add sample documents for testing (PDF, DOCX, PNG, JPG)
+- [ ] Add code coverage reporting (>80% target)
+- [ ] Add type checking (mypy)
+
+---
+
+## Production Enhancement: Phase 2 (Scalability & Deployment)
+
+### Phase 12: WebSocket & A2A Support
+- [ ] Add WebSocket support to MCP server
+- [ ] Implement src/interfaces/agent_server.py (A2A distributed runtime)
 - [ ] Define agent events (document.extraction.requested/completed/failed)
 - [ ] Add state persistence for async operations
-- [ ] Add event-driven message handling
 - [ ] Test A2A communication patterns
 - [ ] Add A2A agent documentation
 
-### Phase 7: Azure Deployment
+### Phase 13: Containerization
 - [ ] Create Dockerfile with multi-stage build
 - [ ] Create .dockerignore for Python projects
 - [ ] Test local Docker build and run
+- [ ] Optimize image size (use slim Python base, multi-stage build)
+- [ ] Add health probes (liveness, readiness)
+
+### Phase 14: Azure Deployment
 - [ ] Create azure-container-app.yaml manifest
 - [ ] Configure dual ingress (ports 8000, 8001)
-- [ ] Add health probes (liveness, readiness)
-- [ ] Configure auto-scaling rules
+- [ ] Configure auto-scaling rules (CPU/memory/HTTP requests)
 - [ ] Set up managed identity in Azure
 - [ ] Deploy to Azure Container Apps
 - [ ] Test deployed endpoints (MCP and A2A)
+- [ ] Configure custom domains and SSL certificates
 
-### Phase 8: Testing & Documentation
-- [ ] Add comprehensive unit tests (pytest)
-- [ ] Add integration tests for end-to-end workflows
-- [ ] Add sample documents for testing (PDF, DOCX, PNG, JPG)
-- [ ] Create usage examples for MCP tool
-- [ ] Create usage examples for A2A agent
-- [ ] Document configuration options
-- [ ] Add troubleshooting guide
-- [ ] Add API reference documentation
+### Phase 15: API Management Integration
+- [ ] Create Azure API Management instance (or use existing)
+- [ ] Import MCP OpenAPI specification into APIM
+- [ ] Configure APIM policies (rate limiting, throttling, caching)
+- [ ] Add API key authentication in APIM
+- [ ] Configure request/response transformation policies
+- [ ] Set up APIM developer portal for API documentation
+- [ ] Add monitoring and analytics in APIM
+- [ ] Test MCP access through APIM gateway
+- [ ] Document APIM endpoint URLs and authentication
 
-### Phase 9: Enhancements (Future)
+---
+
+## Production Enhancement: Phase 3 (Observability & Operations)
+
+### Phase 16: Monitoring & Telemetry
+- [ ] Add Application Insights integration
+- [ ] Add structured logging (JSON format)
+- [ ] Add custom metrics (extraction success rate, processing time, confidence scores)
+- [ ] Add distributed tracing for multi-agent workflows
+- [ ] Create Azure Monitor dashboards
+- [ ] Set up alerts for failures and performance degradation
+
+### Phase 17: Documentation & Operations
+- [ ] Add comprehensive API reference documentation
+- [ ] Add architecture diagrams (sequence diagrams, component diagrams)
+- [ ] Create deployment runbook
+- [ ] Create troubleshooting guide with common issues
+- [ ] Add performance tuning guide
+- [ ] Add security best practices documentation
+- [ ] Create usage examples for all supported document types
+
+---
+
+## Future Enhancements (Post-Production)
+
+### Phase 18: Extended Format Support
 - [ ] Add support for Excel (XLSX) documents
 - [ ] Add support for TXT and HTML documents
+- [ ] Add support for email formats (MSG, EML)
+- [ ] Add support for compressed archives (ZIP extraction)
+
+### Phase 19: Advanced Features
 - [ ] Implement batch processing for multiple documents
 - [ ] Add streaming results for large documents
-- [ ] Add caching layer for repeated extractions
-- [ ] Add audit logging and telemetry (Application Insights)
-- [ ] Add multi-language document support
+- [ ] Add caching layer for repeated extractions (Redis)
+- [ ] Add document fingerprinting for duplicate detection
+- [ ] Add support for encrypted/password-protected documents
+
+### Phase 20: AI Enhancements
 - [ ] Fine-tune custom extraction models for specific document types
+- [ ] Add multi-language document support (automatic language detection)
+- [ ] Add table extraction and structure preservation
+- [ ] Add handwriting recognition support
+- [ ] Add form field detection and auto-mapping
+- [ ] Add entity recognition and linking (NER)
 
 ## Overview
 
