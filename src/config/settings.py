@@ -111,6 +111,26 @@ class Settings:
     def max_buffer_size_mb(self) -> int:
         """Maximum document buffer size in MB."""
         return int(self._get_nested("maxBufferSizeMB") or 10)
+    
+    # Prompts
+    @property
+    def extraction_prompt(self) -> str:
+        """System prompt template for data extraction."""
+        return self._get_nested("prompts.extraction") or self._default_extraction_prompt()
+    
+    def _default_extraction_prompt(self) -> str:
+        """Default extraction prompt if not configured."""
+        return """You are a data extraction assistant. Extract the requested data elements from the provided document text.
+
+Data elements to extract:
+{elements}
+
+Return the extracted data as a JSON object with field names as keys.
+If a field cannot be found, use null as the value.
+Return ONLY the JSON object, no additional text or explanation.
+
+Example format:
+{{"fieldName1": "value1", "fieldName2": 123, "fieldName3": null}}"""
 
 
 # Global settings instance

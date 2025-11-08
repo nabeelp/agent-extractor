@@ -22,10 +22,10 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Simple configuration validation
 
 ### Phase 3: MVP Extraction (Single Format - PDF Only)
-- [ ] Implement src/extraction/document_parser.py (base64 decoding, PDF text extraction only)
-- [ ] Implement src/extraction/extractor.py (gpt-4o text extraction, no vision, no Document Intelligence)
-- [ ] Basic error handling (try/catch, simple error messages)
-- [ ] Single-page PDF support only
+- [x] Implement src/extraction/document_parser.py (base64 decoding, PDF text extraction only)
+- [x] Implement src/extraction/extractor.py (gpt-4o text extraction, no vision, no Document Intelligence)
+- [x] Basic error handling (try/catch, simple error messages)
+- [x] Single-page PDF support only
 
 ### Phase 4: MVP Agent (Single Agent)
 - [ ] Implement src/agents/extractor_agent.py (basic Microsoft Agent Framework agent)

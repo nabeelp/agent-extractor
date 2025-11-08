@@ -4,6 +4,7 @@ agent-framework-azure-ai
 # Azure SDKs
 azure-ai-formrecognizer>=3.3.0
 azure-identity>=1.15.0
+azure-ai-inference>=1.0.0b1
 
 # Document processing
 PyPDF2>=3.0.0

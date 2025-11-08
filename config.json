@@ -7,5 +7,8 @@
   },
   "serverPorts": {
     "mcp": 8000
+  },
+  "prompts": {
+    "extraction": "You are a data extraction assistant. Extract the requested data elements from the provided document text.\n\nData elements to extract:\n{elements}\n\nReturn the extracted data as a JSON object with field names as keys.\nIf a field cannot be found, use null as the value.\nReturn ONLY the JSON object, no additional text or explanation.\n\nExample format:\n{{\"fieldName1\": \"value1\", \"fieldName2\": 123, \"fieldName3\": null}}"
   }
 }
