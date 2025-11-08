@@ -5,11 +5,11 @@
 Track implementation progress for the agent-extractor solution. Update status as tasks are completed.
 
 ### Phase 1: Project Setup
-- [ ] Initialize Python project structure (venv, requirements.txt, pyproject.toml)
-- [ ] Install agent-framework-azure-ai --pre and core dependencies
-- [ ] Create directory structure (src/, src/config/, src/extraction/, src/agents/, src/interfaces/)
-- [ ] Set up .gitignore for Python (.venv, __pycache__, *.pyc, .env)
-- [ ] Create README.md with setup instructions
+- [x] Initialize Python project structure (venv, requirements.txt, pyproject.toml)
+- [x] Install agent-framework-azure-ai --pre and core dependencies
+- [x] Create directory structure (src/, src/config/, src/extraction/, src/agents/, src/interfaces/)
+- [x] Set up .gitignore for Python (.venv, __pycache__, *.pyc, .env)
+- [x] Create README.md with setup instructions
 
 ### Phase 2: Configuration System
 - [ ] Create config.json with default values (thresholds, endpoints, ports)
@@ -157,12 +157,16 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
   - `Pillow` (image processing)
   - `python-dotenv` (environment configuration)
 - Create `pyproject.toml` for project metadata
-- Set up virtual environment and install dependencies:
+- Set up virtual environment and install dependencies using uv:
   ```bash
-  python -m venv .venv
-  .venv\Scripts\activate  # Windows
-  pip install agent-framework-azure-ai --pre
-  pip install -r requirements.txt
+  # Install uv (if not already installed)
+  pip install uv
+  
+  # Sync dependencies (creates .venv automatically)
+  uv sync
+  
+  # Install Agent Framework with --pre flag
+  uv pip install agent-framework-azure-ai --pre
   ```
 
 ### Step 2: Create JSON Configuration System

@@ -1,0 +1,59 @@
+[project]
+name = "agent-extractor"
+version = "0.1.0"
+description = "Document extraction agent using Microsoft Agent Framework with MCP and A2A interfaces"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Nabeel Petersen", email = "nabeel@brainjar.co.za" }
+]
+keywords = ["agent", "document-extraction", "mcp", "azure-ai", "agent-framework"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "agent-framework-azure-ai",
+    "azure-ai-formrecognizer>=3.3.0",
+    "PyPDF2>=3.0.0",
+    "python-docx>=1.1.0",
+    "Pillow>=10.0.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_backend"
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
