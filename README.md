@@ -13,6 +13,19 @@ Document extraction agent using Microsoft Agent Framework with MCP and A2A inter
 - **Confidence Scoring**: Per-field confidence validation with configurable thresholds
 - **Production Ready**: Azure Container App deployment with managed identity support
 
+## MVP Limitations (Current Version)
+
+This is the **Minimum Viable Product (MVP)** release with the following limitations:
+
+⚠️ **Document Format**: PDF files only (DOCX, PNG, JPG support coming in production phase)
+⚠️ **Page Support**: Single-page PDFs only (multi-page aggregation coming later)
+⚠️ **Extraction Method**: Text-only extraction with gpt-4o (no vision or Document Intelligence yet)
+⚠️ **Validation**: No confidence scoring or validation agent (coming in Phase 9)
+⚠️ **Interface**: HTTP-only MCP server (WebSocket and A2A agent coming in Phase 12)
+⚠️ **Error Handling**: Basic error messages (enhanced retry logic and detailed errors coming in Phase 10)
+
+See [AGENTS.md](AGENTS.md) for the full roadmap to production.
+
 ## Technology Stack
 
 - **Python 3.11+** with Microsoft Agent Framework
@@ -96,75 +109,173 @@ Edit `config.json` to set your Azure AI Foundry endpoint and model deployment na
 
 ## Usage
 
-### Running Locally
+### Running the Server
 
 ```bash
-# Start both MCP and A2A servers
+# Start MCP HTTP server
 uv run python src/main.py
 
-# MCP server: http://localhost:8000
-# A2A server: http://localhost:8001
+# Server starts on http://localhost:8000
+# Health check: http://localhost:8000/health
+# API docs: http://localhost:8000/docs
 ```
 
-### MCP Tool Usage
+### Quick Test with REST Client
 
-From Claude Desktop or any MCP client:
+1. Install REST Client extension in VS Code: `humao.rest-client`
+2. Open `test.http` file
+3. Click "Send Request" above any request
+4. View response in split pane
 
-```json
-{
-  "tool": "extract_document_data",
-  "arguments": {
+See [test.http](test.http) for examples.
+
+### Testing with curl
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Extract data (replace with your base64-encoded PDF)
+curl -X POST http://localhost:8000/extract_document_data \
+  -H "Content-Type: application/json" \
+  -d '{
     "documentBase64": "JVBERi0xLjQK...",
     "fileType": "pdf",
     "dataElements": [
       {
         "name": "invoiceNumber",
-        "description": "The invoice number from the document",
+        "description": "The invoice number",
         "format": "string",
-        "required": true
-      },
-      {
-        "name": "totalAmount",
-        "description": "The total amount due",
-        "format": "number",
         "required": true
       }
     ]
-  }
+  }'
+```
+
+### Testing with PowerShell
+
+```powershell
+# Convert PDF to base64
+$base64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("invoice.pdf"))
+
+# Extract data
+$body = @{
+    documentBase64 = $base64
+    fileType = "pdf"
+    dataElements = @(
+        @{
+            name = "invoiceNumber"
+            description = "The invoice number"
+            format = "string"
+            required = $true
+        }
+    )
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Uri http://localhost:8000/extract_document_data `
+    -Method Post -Body $body -ContentType "application/json"
+```
+
+### Response Format
+
+**Success:**
+```json
+{
+  "success": true,
+  "extractedData": {
+    "invoiceNumber": "INV-12345",
+    "totalAmount": 1500.00
+  },
+  "errors": null
 }
 ```
 
-### A2A Agent Usage
-
-```python
-from agent_framework import Agent
-
-# Send extraction request
-await agent.send_message(
-    'document.extraction.requested',
-    {
-        'documentBase64': base64_buffer,
-        'fileType': 'pdf',
-        'dataElements': schemas
-    }
-)
-
-# Receive results
-result = await agent.receive_message('document.extraction.completed')
-print(f"Extracted: {result['extractedData']}")
-print(f"Confidence: {result['confidence']}")
+**Failure:**
+```json
+{
+  "success": false,
+  "extractedData": {},
+  "errors": ["Required field 'invoiceNumber' not found in document"]
+}
 ```
 
 ## Configuration
 
 Edit `config.json` to customize:
 
-- `minConfidenceThreshold`: Minimum confidence score for required fields (default: 0.8)
+- `azureAIFoundry.projectEndpoint`: Your Azure AI Foundry project endpoint
+- `azureAIFoundry.extractionModel`: Model deployment name (default: gpt-4o)
+- `serverPorts.mcp`: MCP server port (default: 8000)
+- `minConfidenceThreshold`: Minimum confidence for required fields (default: 0.8)
 - `maxBufferSizeMB`: Maximum document size in MB (default: 10)
-- `routingThresholds`: Criteria for selecting extraction method
-- `serverPorts`: MCP and A2A server ports
+- `prompts.extraction`: System prompt for data extraction (customizable)
 
-See [AGENTS.md](AGENTS.md) for detailed configuration options.
+See [config.json](config.json) and [AGENTS.md](AGENTS.md) for details.
+
+## Troubleshooting
+
+### Server won't start
+
+**Problem**: `ValueError: Required environment variable missing` or `FileNotFoundError: Configuration file not found`
+
+**Solution**:
+1. Ensure `config.json` exists in the project root
+2. Run `az login` to authenticate with Azure
+3. Verify your Azure AI Foundry endpoint in `config.json`
+
+### "Required field not found" error
+
+**Problem**: Extraction succeeds but returns error for required field
+
+**Solution**:
+1. Check that the PDF contains the data you're looking for
+2. Make the field `required: false` for testing
+3. Improve the field `description` to be more specific
+4. Verify the PDF has extractable text (not a scanned image)
+
+### "Unsupported file type" error
+
+**Problem**: `ValueError: Unsupported file type: docx. MVP only supports PDF.`
+
+**Solution**: MVP only supports PDF files. DOCX, PNG, JPG support coming in Phase 8. Convert your document to PDF for now.
+
+### "No text could be extracted" error
+
+**Problem**: PDF appears blank or has no extractable text
+
+**Solution**:
+1. Verify the PDF is not password-protected
+2. Check if PDF is a scanned image (text extraction won't work - Document Intelligence support coming in Phase 8)
+3. Try opening the PDF and checking if text is selectable
+4. MVP only supports first page - ensure data is on page 1
+
+### Authentication errors
+
+**Problem**: `DefaultAzureCredential` authentication fails
+
+**Solution**:
+1. Run `az login` to authenticate
+2. If using multiple tenants, set `AZURE_TENANT_ID` in `.env`
+3. Verify you have appropriate RBAC permissions:
+   - `Cognitive Services OpenAI User` on AI Foundry project
+   - Or `Cognitive Services Contributor`
+
+### Connection timeout or slow responses
+
+**Problem**: Requests take very long or timeout
+
+**Solution**:
+1. Check your internet connection to Azure
+2. Verify Azure AI Foundry endpoint is correct
+3. Check Azure service health status
+4. Large documents may take longer (MVP has 10MB limit)
+
+### Need more help?
+
+1. Check [AGENTS.md](AGENTS.md) for architecture details
+2. Review [test.http](test.http) for working examples
+3. Check server logs (printed to console) for detailed error messages
+4. Open an issue on GitHub with error details and logs
 
 ## Project Structure
 

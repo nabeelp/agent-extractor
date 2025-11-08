@@ -41,10 +41,10 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Test MCP tool with simple HTTP client (curl/Postman)
 
 ### Phase 6: MVP Testing & Documentation
-- [ ] Manual testing with sample PDF documents
-- [ ] Document MVP limitations in README.md
-- [ ] Create simple usage example (HTTP POST with sample PDF)
-- [ ] Basic troubleshooting section
+- [x] Manual testing with sample PDF documents
+- [x] Document MVP limitations in README.md
+- [x] Create simple usage example (HTTP POST with sample PDF)
+- [x] Basic troubleshooting section
 
 ---
 
