@@ -32,6 +32,7 @@ class ExtractDocumentResponse(BaseModel):
     """Response from extract_document_data tool."""
     success: bool = Field(..., description="Whether extraction succeeded")
     extractedData: Dict[str, Any] = Field(default_factory=dict, description="Extracted data with field names as keys")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Routing and extraction context metadata")
     errors: Optional[List[str]] = Field(default=None, description="Error messages if extraction failed")
 
 
@@ -79,7 +80,7 @@ async def extract_document_data(request: ExtractDocumentRequest) -> ExtractDocum
         request: ExtractDocumentRequest with document and data elements
         
     Returns:
-        ExtractDocumentResponse with extracted data or errors
+        ExtractDocumentResponse with extracted data, metadata, or errors
         
     Raises:
         HTTPException: If request validation fails
