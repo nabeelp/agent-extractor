@@ -1,22 +1,29 @@
 """Main entry point for agent-extractor application."""
 
+import logging
 import sys
+
 from .interfaces.mcp_server import start_server
 
 
-def main():
+log = logging.getLogger(__name__)
+
+
+def main() -> None:
     """Start the MCP server."""
-    print("=" * 60)
-    print("Agent Extractor - Document Extraction MCP Server")
-    print("=" * 60)
-    
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    )
+    log.info("Starting Agent Extractor - Document Extraction MCP Server")
+
     try:
         start_server()
     except KeyboardInterrupt:
-        print("\n[Main] Shutting down gracefully...")
+        log.info("Shutting down gracefully after keyboard interrupt")
         sys.exit(0)
-    except Exception as e:
-        print(f"[Main] Failed to start server: {str(e)}")
+    except Exception:  # pragma: no cover - fail fast with context
+        log.exception("Failed to start server")
         sys.exit(1)
 
 

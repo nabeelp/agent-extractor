@@ -1,17 +1,27 @@
 """Document parser for extracting text and images from multi-format documents."""
 
 import base64
+import logging
 from io import BytesIO
-from typing import Optional, List, Dict, Any
-from PyPDF2 import PdfReader
+from typing import Any, Dict, Optional
+
 from docx import Document
 from PIL import Image
+from PyPDF2 import PdfReader
+
+
+log = logging.getLogger(__name__)
 
 
 class DocumentParser:
     """Parser for extracting text and image content from documents."""
     
-    def parse_pdf(self, document_base64: str, all_pages: bool = True) -> str:
+    def parse_pdf(
+        self,
+        document_base64: str,
+        all_pages: bool = True,
+        document_bytes: Optional[bytes] = None,
+    ) -> str:
         """Extract text from a PDF document.
         
         Args:
@@ -25,8 +35,7 @@ class DocumentParser:
             ValueError: If document cannot be decoded or parsed
         """
         try:
-            # Decode base64 to bytes
-            pdf_bytes = base64.b64decode(document_base64)
+            pdf_bytes = document_bytes or base64.b64decode(document_base64)
             
             # Create PDF reader from bytes
             pdf_file = BytesIO(pdf_bytes)
@@ -58,12 +67,16 @@ class DocumentParser:
                 
                 return text.strip()
             
-        except base64.binascii.Error as e:
-            raise ValueError(f"Invalid base64 encoding: {str(e)}")
-        except Exception as e:
-            raise ValueError(f"Failed to parse PDF document: {str(e)}")
+        except base64.binascii.Error as exc:
+            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        except Exception as exc:
+            raise ValueError(f"Failed to parse PDF document: {exc}") from exc
     
-    def parse_docx(self, document_base64: str) -> str:
+    def parse_docx(
+        self,
+        document_base64: str,
+        document_bytes: Optional[bytes] = None,
+    ) -> str:
         """Extract text from a DOCX document.
         
         Args:
@@ -76,10 +89,7 @@ class DocumentParser:
             ValueError: If document cannot be decoded or parsed
         """
         try:
-            # Decode base64 to bytes
-            docx_bytes = base64.b64decode(document_base64)
-            
-            # Create document reader from bytes
+            docx_bytes = document_bytes or base64.b64decode(document_base64)
             docx_file = BytesIO(docx_bytes)
             doc = Document(docx_file)
             
@@ -106,12 +116,17 @@ class DocumentParser:
             
             return "\n\n".join(paragraphs)
             
-        except base64.binascii.Error as e:
-            raise ValueError(f"Invalid base64 encoding: {str(e)}")
-        except Exception as e:
-            raise ValueError(f"Failed to parse DOCX document: {str(e)}")
+        except base64.binascii.Error as exc:
+            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        except Exception as exc:
+            raise ValueError(f"Failed to parse DOCX document: {exc}") from exc
     
-    def parse_image(self, document_base64: str, file_type: str) -> Dict[str, Any]:
+    def parse_image(
+        self,
+        document_base64: str,
+        file_type: str,
+        document_bytes: Optional[bytes] = None,
+    ) -> Dict[str, Any]:
         """Parse image and return metadata for vision-based extraction.
         
         Args:
@@ -125,8 +140,7 @@ class DocumentParser:
             ValueError: If image cannot be decoded or parsed
         """
         try:
-            # Decode base64 to bytes
-            image_bytes = base64.b64decode(document_base64)
+            image_bytes = document_bytes or base64.b64decode(document_base64)
             
             # Open image
             image = Image.open(BytesIO(image_bytes))
@@ -150,16 +164,17 @@ class DocumentParser:
                 "media_type": f"image/{file_type.lower()}"
             }
             
-        except base64.binascii.Error as e:
-            raise ValueError(f"Invalid base64 encoding: {str(e)}")
-        except Exception as e:
-            raise ValueError(f"Failed to parse image: {str(e)}")
+        except base64.binascii.Error as exc:
+            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        except Exception as exc:
+            raise ValueError(f"Failed to parse image: {exc}") from exc
 
 
 def parse_document(
     document_base64: str,
     file_type: str,
-    all_pages: bool = True
+    all_pages: bool = True,
+    document_bytes: Optional[bytes] = None,
 ) -> str:
     """Parse document and extract text content.
     
@@ -178,9 +193,9 @@ def parse_document(
     file_type_lower = file_type.lower().strip()
     
     if file_type_lower == 'pdf':
-        return parser.parse_pdf(document_base64, all_pages)
+        return parser.parse_pdf(document_base64, all_pages, document_bytes=document_bytes)
     elif file_type_lower == 'docx':
-        return parser.parse_docx(document_base64)
+        return parser.parse_docx(document_base64, document_bytes=document_bytes)
     elif file_type_lower in ['png', 'jpg', 'jpeg']:
         raise ValueError(
             f"Image files ({file_type}) require vision-based extraction. "
@@ -193,7 +208,11 @@ def parse_document(
         )
 
 
-def parse_image_document(document_base64: str, file_type: str) -> Dict[str, Any]:
+def parse_image_document(
+    document_base64: str,
+    file_type: str,
+    document_bytes: Optional[bytes] = None,
+) -> Dict[str, Any]:
     """Parse image document for vision-based extraction.
     
     Args:
@@ -207,4 +226,4 @@ def parse_image_document(document_base64: str, file_type: str) -> Dict[str, Any]
         ValueError: If parsing fails
     """
     parser = DocumentParser()
-    return parser.parse_image(document_base64, file_type)
+    return parser.parse_image(document_base64, file_type, document_bytes=document_bytes)

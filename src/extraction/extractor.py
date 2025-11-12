@@ -1,13 +1,24 @@
 """Data extraction using Azure AI Foundry models and Azure Document Intelligence."""
 
 import json
+import logging
 from typing import Any, Dict, List, Optional
-from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import SystemMessage, UserMessage, ImageContentItem, ImageUrl, TextContentItem
+
 from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.ai.inference import ChatCompletionsClient
+from azure.ai.inference.models import (
+    ImageContentItem,
+    ImageUrl,
+    SystemMessage,
+    TextContentItem,
+    UserMessage,
+)
 from azure.core.credentials import AzureKeyCredential
 
 from ..config.settings import Settings
+
+
+log = logging.getLogger(__name__)
 
 
 class Extractor:
@@ -49,7 +60,7 @@ class Extractor:
     def extract_from_text(
         self,
         text: str,
-        data_elements: List[Dict[str, Any]]
+        data_elements: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Extract data elements from document text using text-based LLM.
         
@@ -85,13 +96,14 @@ class Extractor:
             
             return extracted_data
             
-        except Exception as e:
-            raise ValueError(f"Text extraction failed: {str(e)}")
+        except Exception as exc:
+            log.exception("Text extraction failed")
+            raise ValueError(f"Text extraction failed: {exc}") from exc
     
     def extract_from_image(
         self,
         image_data: Dict[str, Any],
-        data_elements: List[Dict[str, Any]]
+        data_elements: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Extract data elements from image or PDF using vision-capable LLM.
         
@@ -144,13 +156,14 @@ class Extractor:
             
             return extracted_data
             
-        except Exception as e:
-            raise ValueError(f"Vision extraction failed: {str(e)}")
+        except Exception as exc:
+            log.exception("Vision extraction failed")
+            raise ValueError(f"Vision extraction failed: {exc}") from exc
     
     def extract_with_document_intelligence(
         self,
         document_base64: str,
-        data_elements: List[Dict[str, Any]]
+        data_elements: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Extract data using Azure Document Intelligence for OCR preprocessing.
         
@@ -167,7 +180,7 @@ class Extractor:
         if not self.doc_intelligence_client:
             raise ValueError(
                 "Azure Document Intelligence not configured. "
-                "Add azureDocumentIntelligence section to config.json"
+                "Add azureDocumentIntelligence section to config.json",
             )
         
         try:
@@ -201,8 +214,9 @@ class Extractor:
             # Use LLM for structured extraction from OCR text
             return self.extract_from_text(full_text, data_elements)
             
-        except Exception as e:
-            raise ValueError(f"Document Intelligence extraction failed: {str(e)}")
+        except Exception as exc:
+            log.exception("Document Intelligence extraction failed")
+            raise ValueError(f"Document Intelligence extraction failed: {exc}") from exc
     
     def extract(
         self,
@@ -210,7 +224,7 @@ class Extractor:
         data_elements: List[Dict[str, Any]],
         image_data: Optional[Dict[str, Any]] = None,
         document_base64: Optional[str] = None,
-        use_document_intelligence: bool = False
+        use_document_intelligence: bool = False,
     ) -> Dict[str, Any]:
         """Extract data elements using appropriate method.
         
@@ -232,7 +246,7 @@ class Extractor:
             if use_document_intelligence and document_base64:
                 extracted_data = self.extract_with_document_intelligence(
                     document_base64,
-                    data_elements
+                    data_elements,
                 )
             elif image_data:
                 extracted_data = self.extract_from_image(image_data, data_elements)
@@ -250,8 +264,9 @@ class Extractor:
             
             return extracted_data
             
-        except Exception as e:
-            raise ValueError(f"Extraction failed: {str(e)}")
+        except Exception as exc:
+            log.exception("Extraction pipeline failed")
+            raise ValueError(f"Extraction failed: {exc}") from exc
     
     def _build_system_prompt(self, data_elements: List[Dict[str, Any]]) -> str:
         """Build system prompt for extraction.
@@ -302,39 +317,5 @@ class Extractor:
             json_text = result_text[start_idx:end_idx + 1]
             return json.loads(json_text)
             
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse extraction result as JSON: {str(e)}")
-
-
-def extract_data(
-    text: Optional[str],
-    data_elements: List[Dict[str, Any]],
-    settings: Settings,
-    image_data: Optional[Dict[str, Any]] = None,
-    document_base64: Optional[str] = None,
-    use_document_intelligence: bool = False
-) -> Dict[str, Any]:
-    """Extract structured data from document.
-    
-    Args:
-        text: Document text content
-        data_elements: List of data element definitions
-        settings: Application settings
-        image_data: Image data for vision extraction
-        document_base64: Base64 document for Document Intelligence
-        use_document_intelligence: Whether to use Azure Document Intelligence
-        
-    Returns:
-        Extracted data dictionary
-        
-    Raises:
-        ValueError: If extraction fails
-    """
-    extractor = Extractor(settings)
-    return extractor.extract(
-        text=text,
-        data_elements=data_elements,
-        image_data=image_data,
-        document_base64=document_base64,
-        use_document_intelligence=use_document_intelligence
-    )
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Failed to parse extraction result as JSON: {exc}") from exc

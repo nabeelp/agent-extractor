@@ -1,11 +1,16 @@
 """Document routing logic to select optimal extraction strategy."""
 
 import base64
+import logging
 from enum import Enum
-from typing import Dict, Any, Optional
 from io import BytesIO
+from typing import Any, Dict, Optional
+
 from PIL import Image
 from PyPDF2 import PdfReader
+
+
+log = logging.getLogger(__name__)
 
 
 class ExtractionMethod(Enum):
@@ -56,7 +61,8 @@ class DocumentRouter:
     def analyze_and_route(
         self,
         document_base64: str,
-        file_type: str
+        file_type: str,
+        document_bytes: Optional[bytes] = None,
     ) -> Dict[str, Any]:
         """Analyze document and determine best extraction strategy.
         
@@ -82,7 +88,7 @@ class DocumentRouter:
             doc_type = self._detect_document_type(file_type_lower)
             
             # Analyze document characteristics
-            metadata = self._analyze_document(document_base64, doc_type)
+            metadata = self._analyze_document(document_base64, doc_type, document_bytes)
             
             # Determine extraction method based on characteristics
             method, reasoning = self._select_extraction_method(doc_type, metadata)
@@ -128,7 +134,8 @@ class DocumentRouter:
     def _analyze_document(
         self,
         document_base64: str,
-        doc_type: DocumentType
+        doc_type: DocumentType,
+        document_bytes: Optional[bytes] = None,
     ) -> Dict[str, Any]:
         """Analyze document characteristics.
         
@@ -143,18 +150,22 @@ class DocumentRouter:
         
         try:
             if doc_type == DocumentType.PDF:
-                metadata.update(self._analyze_pdf(document_base64))
+                metadata.update(self._analyze_pdf(document_base64, document_bytes))
             elif doc_type == DocumentType.DOCX:
-                metadata.update(self._analyze_docx(document_base64))
+                metadata.update(self._analyze_docx(document_base64, document_bytes))
             elif doc_type in [DocumentType.PNG, DocumentType.JPG, DocumentType.JPEG]:
-                metadata.update(self._analyze_image(document_base64))
+                metadata.update(self._analyze_image(document_base64, document_bytes))
         except Exception as e:
             # Non-fatal: continue with basic metadata
             metadata["analysis_error"] = str(e)
         
         return metadata
     
-    def _analyze_pdf(self, document_base64: str) -> Dict[str, Any]:
+    def _analyze_pdf(
+        self,
+        document_base64: str,
+        document_bytes: Optional[bytes] = None,
+    ) -> Dict[str, Any]:
         """Analyze PDF document characteristics.
         
         Args:
@@ -164,7 +175,7 @@ class DocumentRouter:
             PDF metadata
         """
         try:
-            pdf_bytes = base64.b64decode(document_base64)
+            pdf_bytes = document_bytes or base64.b64decode(document_base64)
             pdf_file = BytesIO(pdf_bytes)
             reader = PdfReader(pdf_file)
             
@@ -191,7 +202,11 @@ class DocumentRouter:
         except Exception as e:
             return {"error": f"PDF analysis failed: {str(e)}"}
     
-    def _analyze_docx(self, document_base64: str) -> Dict[str, Any]:
+    def _analyze_docx(
+        self,
+        document_base64: str,
+        document_bytes: Optional[bytes] = None,
+    ) -> Dict[str, Any]:
         """Analyze DOCX document characteristics.
         
         Args:
@@ -206,7 +221,11 @@ class DocumentRouter:
             "is_structured": True
         }
     
-    def _analyze_image(self, document_base64: str) -> Dict[str, Any]:
+    def _analyze_image(
+        self,
+        document_base64: str,
+        document_bytes: Optional[bytes] = None,
+    ) -> Dict[str, Any]:
         """Analyze image characteristics.
         
         Args:
@@ -216,7 +235,7 @@ class DocumentRouter:
             Image metadata
         """
         try:
-            image_bytes = base64.b64decode(document_base64)
+            image_bytes = document_bytes or base64.b64decode(document_base64)
             image = Image.open(BytesIO(image_bytes))
             
             width, height = image.size
@@ -311,6 +330,7 @@ class DocumentRouter:
 def route_document(
     document_base64: str,
     file_type: str,
+    document_bytes: Optional[bytes] = None,
     use_document_intelligence: bool = False,
     text_density_threshold: int = 100,
     low_resolution_threshold: int = 500000,
@@ -344,4 +364,4 @@ def route_document(
         use_di_for_low_text=use_di_for_low_text,
         use_di_for_poor_quality=use_di_for_poor_quality
     )
-    return router.analyze_and_route(document_base64, file_type)
+    return router.analyze_and_route(document_base64, file_type, document_bytes=document_bytes)

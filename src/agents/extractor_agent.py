@@ -1,11 +1,16 @@
 """Document extraction agent using Microsoft Agent Framework."""
 
+import base64
+import logging
 from typing import Any, Dict, List, Optional
 
 from ..config.settings import Settings
-from ..extraction.router import route_document, ExtractionMethod
 from ..extraction.document_parser import parse_document, parse_image_document
-from ..extraction.extractor import extract_data
+from ..extraction.extractor import Extractor
+from ..extraction.router import ExtractionMethod, route_document
+
+
+log = logging.getLogger(__name__)
 
 
 class ExtractionResult:
@@ -67,12 +72,16 @@ class ExtractorAgent:
             settings: Application settings
         """
         self.settings = settings
+        self.extractor = Extractor(settings)
         self.has_document_intelligence = (
             settings.azure_document_intelligence is not None and
             settings.azure_document_intelligence.endpoint is not None
         )
-        print(f"[ExtractorAgent] Initialized with model: {settings.extraction_model}")
-        print(f"[ExtractorAgent] Document Intelligence available: {self.has_document_intelligence}")
+        log.info(
+            "Extractor agent initialised | model=%s | document_intelligence=%s",
+            settings.extraction_model,
+            self.has_document_intelligence,
+        )
     
     def extract_from_document(
         self,
@@ -97,14 +106,22 @@ class ExtractorAgent:
             ExtractionResult with extracted data or error
         """
         try:
-            print(f"[ExtractorAgent] Starting extraction for {file_type} document")
-            print(f"[ExtractorAgent] Data elements to extract: {len(data_elements)}")
-            
+            try:
+                document_bytes = base64.b64decode(document_base64)
+            except (base64.binascii.Error, ValueError) as exc:
+                raise ValueError(f"Invalid base64 document payload: {exc}") from exc
+
+            log.info(
+                "Starting extraction | type=%s | elements=%s",
+                file_type,
+                len(data_elements),
+            )
+
             # Step 1: Route document to select extraction method
-            print("[ExtractorAgent] Step 1: Routing document...")
             routing_result = route_document(
                 document_base64,
                 file_type,
+                document_bytes=document_bytes,
                 use_document_intelligence=self.has_document_intelligence,
                 text_density_threshold=self.settings.routing_thresholds.text_density_threshold,
                 low_resolution_threshold=self.settings.routing_thresholds.low_resolution_threshold,
@@ -118,8 +135,11 @@ class ExtractorAgent:
             reasoning = routing_result["reasoning"]
             doc_metadata = routing_result["metadata"]
             
-            print(f"[ExtractorAgent] Selected method: {method.value}")
-            print(f"[ExtractorAgent] Reasoning: {reasoning}")
+            log.info(
+                "Routing decision | method=%s | reasoning=%s",
+                method.value,
+                reasoning,
+            )
             
             # Step 2 & 3: Parse and extract based on selected method
             extracted_data = self._execute_extraction(
@@ -127,11 +147,12 @@ class ExtractorAgent:
                 file_type,
                 method,
                 data_elements,
-                doc_metadata
+                doc_metadata,
+                document_bytes,
             )
             
             # Step 4: Return results with metadata
-            print("[ExtractorAgent] Extraction completed successfully")
+            log.info("Extraction completed successfully")
             return ExtractionResult(
                 success=True,
                 data=extracted_data,
@@ -143,15 +164,13 @@ class ExtractorAgent:
                 }
             )
             
-        except ValueError as e:
-            # Handle expected errors
-            print(f"[ExtractorAgent] Extraction failed: {str(e)}")
-            return ExtractionResult(success=False, error=str(e))
-        
-        except Exception as e:
-            # Handle unexpected errors
-            print(f"[ExtractorAgent] Unexpected error: {str(e)}")
-            return ExtractionResult(success=False, error=f"Unexpected error: {str(e)}")
+        except ValueError as exc:
+            log.warning("Extraction failed | error=%s", exc)
+            return ExtractionResult(success=False, error=str(exc))
+
+        except Exception as exc:  # pragma: no cover - defensive failure path
+            log.exception("Unexpected error during extraction")
+            return ExtractionResult(success=False, error=f"Unexpected error: {exc}")
     
     def _execute_extraction(
         self,
@@ -159,7 +178,8 @@ class ExtractorAgent:
         file_type: str,
         method: ExtractionMethod,
         data_elements: List[Dict[str, Any]],
-        doc_metadata: Dict[str, Any]
+        doc_metadata: Dict[str, Any],
+        document_bytes: bytes,
     ) -> Dict[str, Any]:
         """Execute extraction using the selected method.
         
@@ -178,51 +198,54 @@ class ExtractorAgent:
         """
         if method == ExtractionMethod.LLM_TEXT:
             # Text-based extraction
-            print("[ExtractorAgent] Step 2: Parsing document (text)...")
-            text = parse_document(document_base64, file_type, all_pages=True)
-            print(f"[ExtractorAgent] Extracted {len(text)} characters of text")
-            
-            print("[ExtractorAgent] Step 3: Extracting data with LLM (text)...")
-            return extract_data(
+            text = parse_document(
+                document_base64,
+                file_type,
+                all_pages=True,
+                document_bytes=document_bytes,
+            )
+            log.debug("Parsed text document | chars=%s", len(text))
+
+            return self.extractor.extract(
                 text=text,
                 data_elements=data_elements,
-                settings=self.settings
             )
         
         elif method == ExtractionMethod.LLM_VISION:
             # Vision-based extraction
             if file_type.lower() == 'pdf':
                 # For PDFs, pass directly to vision model (no image parsing needed)
-                print("[ExtractorAgent] Step 2: Preparing PDF for vision extraction...")
                 document_data = {
                     "base64_data": document_base64,
                     "media_type": "application/pdf",
                     "document_type": "pdf"
                 }
-                print("[ExtractorAgent] PDF prepared for vision model")
             else:
                 # For images (PNG/JPG), parse to get metadata
-                print("[ExtractorAgent] Step 2: Parsing document (image)...")
-                document_data = parse_image_document(document_base64, file_type)
-                print(f"[ExtractorAgent] Parsed image: {document_data['width']}x{document_data['height']}")
-            
-            print("[ExtractorAgent] Step 3: Extracting data with LLM (vision)...")
-            return extract_data(
+                document_data = parse_image_document(
+                    document_base64,
+                    file_type,
+                    document_bytes=document_bytes,
+                )
+                log.debug(
+                    "Parsed image metadata | width=%s | height=%s",
+                    document_data.get("width"),
+                    document_data.get("height"),
+                )
+
+            return self.extractor.extract(
                 text=None,
                 data_elements=data_elements,
-                settings=self.settings,
-                image_data=document_data
+                image_data=document_data,
             )
         
         elif method == ExtractionMethod.DOCUMENT_INTELLIGENCE:
             # Document Intelligence extraction
-            print("[ExtractorAgent] Step 2 & 3: Extracting with Document Intelligence...")
-            return extract_data(
+            return self.extractor.extract(
                 text=None,
                 data_elements=data_elements,
-                settings=self.settings,
                 document_base64=document_base64,
-                use_document_intelligence=True
+                use_document_intelligence=True,
             )
         
         else:
