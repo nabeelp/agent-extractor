@@ -5,15 +5,19 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 from ..config.settings import Settings
-from ..extraction.document_parser import parse_document, parse_image_document
+from ..extraction.document_parser import DocumentContext, parse_document, parse_image_document
 from ..extraction.extractor import Extractor
-from ..extraction.router import ExtractionMethod, route_document
+from ..extraction.router import (
+    DocumentRouter,
+    ExtractionMethod,
+    RoutingDecision,
+)
 
 
 log = logging.getLogger(__name__)
 
 
-StrategyFn = Callable[[str, str, List[Dict[str, Any]], Dict[str, Any], Optional[bytes]], Dict[str, Any]]
+StrategyFn = Callable[[DocumentContext, List[Dict[str, Any]], Dict[str, Any]], Dict[str, Any]]
 
 
 class ExtractionResult:
@@ -80,6 +84,14 @@ class ExtractorAgent:
             settings.azure_document_intelligence is not None and
             settings.azure_document_intelligence.endpoint is not None
         )
+        self.router = DocumentRouter(
+            use_document_intelligence=self.has_document_intelligence,
+            text_density_threshold=self.settings.routing_thresholds.text_density_threshold,
+            low_resolution_threshold=self.settings.routing_thresholds.low_resolution_threshold,
+            use_di_for_scanned=self.settings.routing_thresholds.use_document_intelligence.scanned_document,
+            use_di_for_low_text=self.settings.routing_thresholds.use_document_intelligence.low_text_density,
+            use_di_for_poor_quality=self.settings.routing_thresholds.use_document_intelligence.poor_image_quality,
+        )
         # Map each extraction method to the handler that knows how to execute it.
         self._strategies: Dict[ExtractionMethod, StrategyFn] = {
             ExtractionMethod.LLM_TEXT: self._extract_with_text,
@@ -127,22 +139,17 @@ class ExtractorAgent:
             )
 
             # Step 1: Route document to select extraction method
-            routing_result = route_document(
-                document_base64,
-                file_type,
-                document_bytes=document_bytes,
-                use_document_intelligence=self.has_document_intelligence,
-                text_density_threshold=self.settings.routing_thresholds.text_density_threshold,
-                low_resolution_threshold=self.settings.routing_thresholds.low_resolution_threshold,
-                use_di_for_scanned=self.settings.routing_thresholds.use_document_intelligence.scanned_document,
-                use_di_for_low_text=self.settings.routing_thresholds.use_document_intelligence.low_text_density,
-                use_di_for_poor_quality=self.settings.routing_thresholds.use_document_intelligence.poor_image_quality
+            doc_context = DocumentContext(
+                file_type=file_type,
+                base64_data=document_base64,
+                raw_bytes=document_bytes,
             )
-            
-            method = routing_result["method"]
-            doc_type = routing_result["doc_type"]
-            reasoning = routing_result["reasoning"]
-            doc_metadata = routing_result["metadata"]
+
+            routing_decision: RoutingDecision = self.router.analyze_and_route(doc_context)
+            method = routing_decision.method
+            doc_type = routing_decision.doc_type
+            reasoning = routing_decision.reasoning
+            doc_metadata = routing_decision.metadata
             
             log.info(
                 "Routing decision | method=%s | reasoning=%s",
@@ -152,12 +159,10 @@ class ExtractorAgent:
             
             # Step 2 & 3: Parse and extract based on selected method
             extracted_data = self._execute_extraction(
-                document_base64,
-                file_type,
+                doc_context,
                 method,
                 data_elements,
                 doc_metadata,
-                document_bytes,
             )
             
             # Step 4: Return results with metadata
@@ -183,18 +188,15 @@ class ExtractorAgent:
     
     def _execute_extraction(
         self,
-        document_base64: str,
-        file_type: str,
+        context: DocumentContext,
         method: ExtractionMethod,
         data_elements: List[Dict[str, Any]],
         doc_metadata: Dict[str, Any],
-        document_bytes: bytes,
     ) -> Dict[str, Any]:
         """Execute extraction using the selected method.
         
         Args:
-            document_base64: Base64 encoded document
-            file_type: Document file type
+            context: Shared document context
             method: Selected extraction method
             data_elements: Data elements to extract
             doc_metadata: Document metadata from routing
@@ -212,28 +214,19 @@ class ExtractorAgent:
             raise ValueError(f"Unsupported extraction method: {method}")
 
         return strategy(
-            document_base64,
-            file_type,
+            context,
             data_elements,
             doc_metadata,
-            document_bytes,
         )
 
     def _extract_with_text(
         self,
-        document_base64: str,
-        file_type: str,
+        context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _: Dict[str, Any],
-        document_bytes: Optional[bytes],
     ) -> Dict[str, Any]:
         # Decode text-first documents and run the text-only extraction pipeline.
-        text = parse_document(
-            document_base64,
-            file_type,
-            all_pages=True,
-            document_bytes=document_bytes,
-        )
+        text = parse_document(context, all_pages=True)
         log.debug("Parsed text document | chars=%s", len(text))
 
         return self.extractor.extract(
@@ -243,25 +236,19 @@ class ExtractorAgent:
 
     def _extract_with_vision(
         self,
-        document_base64: str,
-        file_type: str,
+        context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _: Dict[str, Any],
-        document_bytes: Optional[bytes],
     ) -> Dict[str, Any]:
         # Prepare image or PDF content for the vision-capable model before extraction.
-        if file_type.lower() == "pdf":
+        if context.file_type == "pdf":
             document_data = {
-                "base64_data": document_base64,
+                "base64_data": context.base64_data,
                 "media_type": "application/pdf",
                 "document_type": "pdf",
             }
         else:
-            document_data = parse_image_document(
-                document_base64,
-                file_type,
-                document_bytes=document_bytes,
-            )
+            document_data = parse_image_document(context)
             log.debug(
                 "Parsed image metadata | width=%s | height=%s",
                 document_data.get("width"),
@@ -276,17 +263,15 @@ class ExtractorAgent:
 
     def _extract_with_document_intelligence(
         self,
-        document_base64: str,
-        _file_type: str,
+        context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _metadata: Dict[str, Any],
-        _document_bytes: Optional[bytes],
     ) -> Dict[str, Any]:
         # Hand off to the Document Intelligence + LLM flow when OCR preprocessing is needed.
         return self.extractor.extract(
             text=None,
             data_elements=data_elements,
-            document_base64=document_base64,
+            document_base64=context.base64_data,
             use_document_intelligence=True,
         )
 

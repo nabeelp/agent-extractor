@@ -1,13 +1,15 @@
 """Document routing logic to select optimal extraction strategy."""
 
-import base64
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from PIL import Image
 from PyPDF2 import PdfReader
+
+from .document_parser import DocumentContext
 
 
 log = logging.getLogger(__name__)
@@ -27,6 +29,14 @@ class DocumentType(Enum):
     PNG = "png"
     JPG = "jpg"
     JPEG = "jpeg"
+
+
+@dataclass
+class RoutingDecision:
+    method: ExtractionMethod
+    doc_type: DocumentType
+    reasoning: str
+    metadata: Dict[str, Any]
 
 
 class DocumentRouter:
@@ -60,45 +70,30 @@ class DocumentRouter:
     
     def analyze_and_route(
         self,
-        document_base64: str,
-        file_type: str,
-        document_bytes: Optional[bytes] = None,
-    ) -> Dict[str, Any]:
+        context: DocumentContext,
+    ) -> RoutingDecision:
         """Analyze document and determine best extraction strategy.
         
         Args:
-            document_base64: Base64 encoded document
-            file_type: Document file type (pdf, docx, png, jpg)
+            context: Shared document context containing metadata and raw bytes
             
         Returns:
-            Dictionary with routing decision:
-                - method: ExtractionMethod to use
-                - doc_type: DocumentType detected
-                - reasoning: Explanation of routing decision
-                - metadata: Additional document metadata
+            RoutingDecision containing method, document type, reasoning, and metadata
                 
         Raises:
             ValueError: If document type not supported or analysis fails
         """
         try:
-            # Normalize file type
-            file_type_lower = file_type.lower().strip()
-            
-            # Validate and detect document type
-            doc_type = self._detect_document_type(file_type_lower)
-            
-            # Analyze document characteristics
-            metadata = self._analyze_document(document_base64, doc_type, document_bytes)
-            
-            # Determine extraction method based on characteristics
+            doc_type = self._detect_document_type(context.file_type)
+            metadata = self._analyze_document(context, doc_type)
             method, reasoning = self._select_extraction_method(doc_type, metadata)
-            
-            return {
-                "method": method,
-                "doc_type": doc_type,
-                "reasoning": reasoning,
-                "metadata": metadata
-            }
+
+            return RoutingDecision(
+                method=method,
+                doc_type=doc_type,
+                reasoning=reasoning,
+                metadata=metadata,
+            )
             
         except Exception as e:
             raise ValueError(f"Document routing failed: {str(e)}")
@@ -133,14 +128,13 @@ class DocumentRouter:
     
     def _analyze_document(
         self,
-        document_base64: str,
+        context: DocumentContext,
         doc_type: DocumentType,
-        document_bytes: Optional[bytes] = None,
     ) -> Dict[str, Any]:
         """Analyze document characteristics.
         
         Args:
-            document_base64: Base64 encoded document
+            context: Shared document context
             doc_type: Document type
             
         Returns:
@@ -150,11 +144,11 @@ class DocumentRouter:
         
         try:
             if doc_type == DocumentType.PDF:
-                metadata.update(self._analyze_pdf(document_base64, document_bytes))
+                metadata.update(self._analyze_pdf(context))
             elif doc_type == DocumentType.DOCX:
-                metadata.update(self._analyze_docx(document_base64, document_bytes))
+                metadata.update(self._analyze_docx(context))
             elif doc_type in [DocumentType.PNG, DocumentType.JPG, DocumentType.JPEG]:
-                metadata.update(self._analyze_image(document_base64, document_bytes))
+                metadata.update(self._analyze_image(context))
         except Exception as e:
             # Non-fatal: continue with basic metadata
             metadata["analysis_error"] = str(e)
@@ -163,8 +157,7 @@ class DocumentRouter:
     
     def _analyze_pdf(
         self,
-        document_base64: str,
-        document_bytes: Optional[bytes] = None,
+        context: DocumentContext,
     ) -> Dict[str, Any]:
         """Analyze PDF document characteristics.
         
@@ -175,8 +168,7 @@ class DocumentRouter:
             PDF metadata
         """
         try:
-            pdf_bytes = document_bytes or base64.b64decode(document_base64)
-            pdf_file = BytesIO(pdf_bytes)
+            pdf_file = BytesIO(context.raw_bytes)
             reader = PdfReader(pdf_file)
             
             total_pages = len(reader.pages)
@@ -204,8 +196,7 @@ class DocumentRouter:
     
     def _analyze_docx(
         self,
-        document_base64: str,
-        document_bytes: Optional[bytes] = None,
+        context: DocumentContext,
     ) -> Dict[str, Any]:
         """Analyze DOCX document characteristics.
         
@@ -223,8 +214,7 @@ class DocumentRouter:
     
     def _analyze_image(
         self,
-        document_base64: str,
-        document_bytes: Optional[bytes] = None,
+        context: DocumentContext,
     ) -> Dict[str, Any]:
         """Analyze image characteristics.
         
@@ -235,8 +225,7 @@ class DocumentRouter:
             Image metadata
         """
         try:
-            image_bytes = document_bytes or base64.b64decode(document_base64)
-            image = Image.open(BytesIO(image_bytes))
+            image = Image.open(BytesIO(context.raw_bytes))
             
             width, height = image.size
             mode = image.mode
@@ -325,43 +314,3 @@ class DocumentRouter:
             ExtractionMethod.LLM_TEXT,
             "Default text-based extraction"
         )
-
-
-def route_document(
-    document_base64: str,
-    file_type: str,
-    document_bytes: Optional[bytes] = None,
-    use_document_intelligence: bool = False,
-    text_density_threshold: int = 100,
-    low_resolution_threshold: int = 500000,
-    use_di_for_scanned: bool = True,
-    use_di_for_low_text: bool = True,
-    use_di_for_poor_quality: bool = True
-) -> Dict[str, Any]:
-    """Route document to optimal extraction method.
-    
-    Args:
-        document_base64: Base64 encoded document
-        file_type: Document file type
-        use_document_intelligence: Whether Azure Document Intelligence is available
-        text_density_threshold: Minimum chars/page for text-based extraction
-        low_resolution_threshold: Pixel count threshold for low resolution
-        use_di_for_scanned: Use Document Intelligence for scanned documents
-        use_di_for_low_text: Use Document Intelligence for low text density
-        use_di_for_poor_quality: Use Document Intelligence for poor image quality
-        
-    Returns:
-        Routing decision dictionary
-        
-    Raises:
-        ValueError: If routing fails
-    """
-    router = DocumentRouter(
-        use_document_intelligence=use_document_intelligence,
-        text_density_threshold=text_density_threshold,
-        low_resolution_threshold=low_resolution_threshold,
-        use_di_for_scanned=use_di_for_scanned,
-        use_di_for_low_text=use_di_for_low_text,
-        use_di_for_poor_quality=use_di_for_poor_quality
-    )
-    return router.analyze_and_route(document_base64, file_type, document_bytes=document_bytes)

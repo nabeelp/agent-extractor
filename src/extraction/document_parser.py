@@ -13,14 +13,31 @@ from PyPDF2 import PdfReader
 log = logging.getLogger(__name__)
 
 
+class DocumentContext:
+    """Shared document context to avoid repeated decoding and metadata extraction."""
+
+    def __init__(self, file_type: str, base64_data: str, raw_bytes: Optional[bytes] = None):
+        self.file_type = file_type.lower().strip()
+        self.base64_data = base64_data
+        self._raw_bytes = raw_bytes
+
+    @property
+    def raw_bytes(self) -> bytes:
+        if self._raw_bytes is None:
+            try:
+                self._raw_bytes = base64.b64decode(self.base64_data)
+            except base64.binascii.Error as exc:  # pragma: no cover - defensive
+                raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        return self._raw_bytes
+
+
 class DocumentParser:
     """Parser for extracting text and image content from documents."""
     
     def parse_pdf(
         self,
-        document_base64: str,
+        context: DocumentContext,
         all_pages: bool = True,
-        document_bytes: Optional[bytes] = None,
     ) -> str:
         """Extract text from a PDF document.
         
@@ -35,10 +52,7 @@ class DocumentParser:
             ValueError: If document cannot be decoded or parsed
         """
         try:
-            pdf_bytes = document_bytes or base64.b64decode(document_base64)
-            
-            # Create PDF reader from bytes
-            pdf_file = BytesIO(pdf_bytes)
+            pdf_file = BytesIO(context.raw_bytes)
             reader = PdfReader(pdf_file)
             
             if len(reader.pages) == 0:
@@ -74,8 +88,7 @@ class DocumentParser:
     
     def parse_docx(
         self,
-        document_base64: str,
-        document_bytes: Optional[bytes] = None,
+        context: DocumentContext,
     ) -> str:
         """Extract text from a DOCX document.
         
@@ -89,8 +102,7 @@ class DocumentParser:
             ValueError: If document cannot be decoded or parsed
         """
         try:
-            docx_bytes = document_bytes or base64.b64decode(document_base64)
-            docx_file = BytesIO(docx_bytes)
+            docx_file = BytesIO(context.raw_bytes)
             doc = Document(docx_file)
             
             # Extract text from all paragraphs
@@ -123,9 +135,7 @@ class DocumentParser:
     
     def parse_image(
         self,
-        document_base64: str,
-        file_type: str,
-        document_bytes: Optional[bytes] = None,
+        context: DocumentContext,
     ) -> Dict[str, Any]:
         """Parse image and return metadata for vision-based extraction.
         
@@ -140,15 +150,12 @@ class DocumentParser:
             ValueError: If image cannot be decoded or parsed
         """
         try:
-            image_bytes = document_bytes or base64.b64decode(document_base64)
-            
-            # Open image
-            image = Image.open(BytesIO(image_bytes))
+            image = Image.open(BytesIO(context.raw_bytes))
             
             # Get image metadata
             width, height = image.size
             mode = image.mode
-            format_name = image.format or file_type.upper()
+            format_name = image.format or context.file_type.upper()
             
             # Convert to RGB if needed (for consistency)
             if mode not in ['RGB', 'L']:
@@ -156,12 +163,12 @@ class DocumentParser:
             
             # Return image data for vision API
             return {
-                "base64_data": document_base64,
+                "base64_data": context.base64_data,
                 "width": width,
                 "height": height,
                 "mode": mode,
                 "format": format_name,
-                "media_type": f"image/{file_type.lower()}"
+                "media_type": f"image/{context.file_type.lower()}"
             }
             
         except base64.binascii.Error as exc:
@@ -171,16 +178,13 @@ class DocumentParser:
 
 
 def parse_document(
-    document_base64: str,
-    file_type: str,
+    context: DocumentContext,
     all_pages: bool = True,
-    document_bytes: Optional[bytes] = None,
 ) -> str:
     """Parse document and extract text content.
     
     Args:
-        document_base64: Base64 encoded document
-        file_type: Document type (pdf, docx, png, jpg, jpeg)
+        context: Shared document context
         all_pages: For PDFs, extract all pages (True) or first page only (False)
         
     Returns:
@@ -190,34 +194,29 @@ def parse_document(
         ValueError: If file type not supported or parsing fails
     """
     parser = DocumentParser()
-    file_type_lower = file_type.lower().strip()
-    
-    if file_type_lower == 'pdf':
-        return parser.parse_pdf(document_base64, all_pages, document_bytes=document_bytes)
-    elif file_type_lower == 'docx':
-        return parser.parse_docx(document_base64, document_bytes=document_bytes)
-    elif file_type_lower in ['png', 'jpg', 'jpeg']:
+    if context.file_type == 'pdf':
+        return parser.parse_pdf(context, all_pages)
+    elif context.file_type == 'docx':
+        return parser.parse_docx(context)
+    elif context.file_type in ['png', 'jpg', 'jpeg']:
         raise ValueError(
-            f"Image files ({file_type}) require vision-based extraction. "
+            f"Image files ({context.file_type}) require vision-based extraction. "
             "Use parse_image() instead."
         )
     else:
         raise ValueError(
-            f"Unsupported file type: {file_type}. "
+            f"Unsupported file type: {context.file_type}. "
             "Supported types: pdf, docx, png, jpg, jpeg"
         )
 
 
 def parse_image_document(
-    document_base64: str,
-    file_type: str,
-    document_bytes: Optional[bytes] = None,
+    context: DocumentContext,
 ) -> Dict[str, Any]:
     """Parse image document for vision-based extraction.
     
     Args:
-        document_base64: Base64 encoded image
-        file_type: Image file type (png, jpg, jpeg)
+        context: Shared document context for an image
         
     Returns:
         Dictionary with image data and metadata
@@ -226,4 +225,4 @@ def parse_image_document(
         ValueError: If parsing fails
     """
     parser = DocumentParser()
-    return parser.parse_image(document_base64, file_type, document_bytes=document_bytes)
+    return parser.parse_image(context)
