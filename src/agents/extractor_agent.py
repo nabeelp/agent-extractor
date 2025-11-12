@@ -2,7 +2,7 @@
 
 import base64
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..config.settings import Settings
 from ..extraction.document_parser import parse_document, parse_image_document
@@ -11,6 +11,9 @@ from ..extraction.router import ExtractionMethod, route_document
 
 
 log = logging.getLogger(__name__)
+
+
+StrategyFn = Callable[[str, str, List[Dict[str, Any]], Dict[str, Any], Optional[bytes]], Dict[str, Any]]
 
 
 class ExtractionResult:
@@ -77,6 +80,12 @@ class ExtractorAgent:
             settings.azure_document_intelligence is not None and
             settings.azure_document_intelligence.endpoint is not None
         )
+        # Map each extraction method to the handler that knows how to execute it.
+        self._strategies: Dict[ExtractionMethod, StrategyFn] = {
+            ExtractionMethod.LLM_TEXT: self._extract_with_text,
+            ExtractionMethod.LLM_VISION: self._extract_with_vision,
+            ExtractionMethod.DOCUMENT_INTELLIGENCE: self._extract_with_document_intelligence,
+        }
         log.info(
             "Extractor agent initialised | model=%s | document_intelligence=%s",
             settings.extraction_model,
@@ -196,60 +205,90 @@ class ExtractorAgent:
         Raises:
             ValueError: If extraction fails
         """
-        if method == ExtractionMethod.LLM_TEXT:
-            # Text-based extraction
-            text = parse_document(
+        # Lookup the handler for the chosen method. This keeps branching logic out of the
+        # main workflow and makes it easy to plug in new strategies later.
+        strategy = self._strategies.get(method)
+        if strategy is None:
+            raise ValueError(f"Unsupported extraction method: {method}")
+
+        return strategy(
+            document_base64,
+            file_type,
+            data_elements,
+            doc_metadata,
+            document_bytes,
+        )
+
+    def _extract_with_text(
+        self,
+        document_base64: str,
+        file_type: str,
+        data_elements: List[Dict[str, Any]],
+        _: Dict[str, Any],
+        document_bytes: Optional[bytes],
+    ) -> Dict[str, Any]:
+        # Decode text-first documents and run the text-only extraction pipeline.
+        text = parse_document(
+            document_base64,
+            file_type,
+            all_pages=True,
+            document_bytes=document_bytes,
+        )
+        log.debug("Parsed text document | chars=%s", len(text))
+
+        return self.extractor.extract(
+            text=text,
+            data_elements=data_elements,
+        )
+
+    def _extract_with_vision(
+        self,
+        document_base64: str,
+        file_type: str,
+        data_elements: List[Dict[str, Any]],
+        _: Dict[str, Any],
+        document_bytes: Optional[bytes],
+    ) -> Dict[str, Any]:
+        # Prepare image or PDF content for the vision-capable model before extraction.
+        if file_type.lower() == "pdf":
+            document_data = {
+                "base64_data": document_base64,
+                "media_type": "application/pdf",
+                "document_type": "pdf",
+            }
+        else:
+            document_data = parse_image_document(
                 document_base64,
                 file_type,
-                all_pages=True,
                 document_bytes=document_bytes,
             )
-            log.debug("Parsed text document | chars=%s", len(text))
+            log.debug(
+                "Parsed image metadata | width=%s | height=%s",
+                document_data.get("width"),
+                document_data.get("height"),
+            )
 
-            return self.extractor.extract(
-                text=text,
-                data_elements=data_elements,
-            )
-        
-        elif method == ExtractionMethod.LLM_VISION:
-            # Vision-based extraction
-            if file_type.lower() == 'pdf':
-                # For PDFs, pass directly to vision model (no image parsing needed)
-                document_data = {
-                    "base64_data": document_base64,
-                    "media_type": "application/pdf",
-                    "document_type": "pdf"
-                }
-            else:
-                # For images (PNG/JPG), parse to get metadata
-                document_data = parse_image_document(
-                    document_base64,
-                    file_type,
-                    document_bytes=document_bytes,
-                )
-                log.debug(
-                    "Parsed image metadata | width=%s | height=%s",
-                    document_data.get("width"),
-                    document_data.get("height"),
-                )
+        return self.extractor.extract(
+            text=None,
+            data_elements=data_elements,
+            image_data=document_data,
+        )
 
-            return self.extractor.extract(
-                text=None,
-                data_elements=data_elements,
-                image_data=document_data,
-            )
-        
-        elif method == ExtractionMethod.DOCUMENT_INTELLIGENCE:
-            # Document Intelligence extraction
-            return self.extractor.extract(
-                text=None,
-                data_elements=data_elements,
-                document_base64=document_base64,
-                use_document_intelligence=True,
-            )
-        
-        else:
-            raise ValueError(f"Unsupported extraction method: {method}")
+    def _extract_with_document_intelligence(
+        self,
+        document_base64: str,
+        _file_type: str,
+        data_elements: List[Dict[str, Any]],
+        _metadata: Dict[str, Any],
+        _document_bytes: Optional[bytes],
+    ) -> Dict[str, Any]:
+        # Hand off to the Document Intelligence + LLM flow when OCR preprocessing is needed.
+        return self.extractor.extract(
+            text=None,
+            data_elements=data_elements,
+            document_base64=document_base64,
+            use_document_intelligence=True,
+        )
 
 
 def create_extractor_agent(settings: Settings) -> ExtractorAgent:
