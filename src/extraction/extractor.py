@@ -2,6 +2,7 @@
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -21,42 +22,120 @@ from ..config.settings import Settings
 log = logging.getLogger(__name__)
 
 
+@dataclass
+class ExtractionHelpers:
+    """Bundle helper components for the extraction workflow."""
+
+    chat_client: ChatCompletionsClient
+    document_intelligence_client: Optional[DocumentAnalysisClient]
+    prompt_template: str
+
+
+class ChatClientFactory:
+    """Create Azure AI chat clients with consistent configuration."""
+
+    def __init__(self, settings: Settings):
+        self._settings = settings
+
+    def create(self) -> ChatCompletionsClient:
+        return ChatCompletionsClient(
+            endpoint=self._settings.azure_ai_foundry_endpoint,
+            credential=self._settings.azure_credential,
+            credential_scopes=["https://cognitiveservices.azure.com/.default"],
+        )
+
+
+class DocumentIntelligenceFactory:
+    """Create Document Intelligence clients when configuration is available."""
+
+    def __init__(self, settings: Settings):
+        self._settings = settings
+
+    def create(self) -> Optional[DocumentAnalysisClient]:
+        config = self._settings.azure_document_intelligence
+        if not config or not config.endpoint:
+            return None
+
+        if config.use_managed_identity:
+            return DocumentAnalysisClient(
+                endpoint=config.endpoint,
+                credential=self._settings.azure_credential,
+            )
+
+        if config.key:
+            return DocumentAnalysisClient(
+                endpoint=config.endpoint,
+                credential=AzureKeyCredential(config.key),
+            )
+
+        return None
+
+
+class PromptBuilder:
+    """Compose prompts for extraction tasks."""
+
+    def __init__(self, template: str):
+        self._template = template
+
+    def build(self, data_elements: List[Dict[str, Any]]) -> str:
+        element_descriptions = []
+        for element in data_elements:
+            required_text = " (REQUIRED)" if element.get("required", False) else ""
+            element_descriptions.append(
+                f"- {element['name']}: {element['description']} "
+                f"[format: {element.get('format', 'string')}]"
+                f"{required_text}"
+            )
+
+        elements_text = "\n".join(element_descriptions)
+        return self._template.replace("{elements}", elements_text)
+
+
+class ExtractionResultParser:
+    """Parse LLM responses into structured results."""
+
+    @staticmethod
+    def parse(result_text: str) -> Dict[str, Any]:
+        try:
+            result_text = result_text.strip()
+            start_idx = result_text.find("{")
+            end_idx = result_text.rfind("}")
+
+            if start_idx == -1 or end_idx == -1:
+                raise ValueError("No JSON object found in response")
+
+            json_text = result_text[start_idx : end_idx + 1]
+            return json.loads(json_text)
+
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Failed to parse extraction result as JSON: {exc}") from exc
+
+
+def build_helpers(settings: Settings) -> ExtractionHelpers:
+    """Construct helper bundle for the extractor."""
+
+    chat_client = ChatClientFactory(settings).create()
+    doc_intel_client = DocumentIntelligenceFactory(settings).create()
+    return ExtractionHelpers(
+        chat_client=chat_client,
+        document_intelligence_client=doc_intel_client,
+        prompt_template=settings.extraction_prompt,
+    )
+
+
 class Extractor:
     """Extract structured data from document text using LLM."""
-    
+
     def __init__(self, settings: Settings):
-        """Initialize extractor with Azure AI Foundry client.
-        
-        Args:
-            settings: Application settings
-        """
+        """Initialize extractor with helper bundle."""
+
         self.settings = settings
-        
-        # Initialize Azure AI Inference client with Entra ID authentication
-        self.client = ChatCompletionsClient(
-            endpoint=settings.azure_ai_foundry_endpoint,
-            credential=settings.azure_credential,
-            credential_scopes=["https://cognitiveservices.azure.com/.default"]
-        )
-        
-        # Initialize Azure Document Intelligence client if configured
-        self.doc_intelligence_client = None
-        if settings.azure_document_intelligence:
-            doc_intel_config = settings.azure_document_intelligence
-            if doc_intel_config.endpoint:
-                if doc_intel_config.use_managed_identity:
-                    # Use managed identity
-                    self.doc_intelligence_client = DocumentAnalysisClient(
-                        endpoint=doc_intel_config.endpoint,
-                        credential=settings.azure_credential
-                    )
-                elif doc_intel_config.key:
-                    # Use API key
-                    self.doc_intelligence_client = DocumentAnalysisClient(
-                        endpoint=doc_intel_config.endpoint,
-                        credential=AzureKeyCredential(doc_intel_config.key)
-                    )
-    
+        helpers = build_helpers(settings)
+        self.client = helpers.chat_client
+        self.doc_intelligence_client = helpers.document_intelligence_client
+        self.prompt_builder = PromptBuilder(helpers.prompt_template)
+        self.result_parser = ExtractionResultParser()
+
     def extract_from_text(
         self,
         text: str,
@@ -76,7 +155,7 @@ class Extractor:
         """
         try:
             # Build extraction prompt
-            system_prompt = self._build_system_prompt(data_elements)
+            system_prompt = self.prompt_builder.build(data_elements)
             user_prompt = f"Document text:\n\n{text}\n\nExtract the requested data elements."
             
             # Call LLM for extraction
@@ -92,7 +171,7 @@ class Extractor:
             
             # Parse response
             result_text = response.choices[0].message.content
-            extracted_data = self._parse_extraction_result(result_text)
+            extracted_data = self.result_parser.parse(result_text)
             
             return extracted_data
             
@@ -122,7 +201,7 @@ class Extractor:
         """
         try:
             # Build extraction prompt
-            system_prompt = self._build_system_prompt(data_elements)
+            system_prompt = self.prompt_builder.build(data_elements)
             
             # Create vision message with image or PDF
             media_type = image_data['media_type']
@@ -152,7 +231,7 @@ class Extractor:
             
             # Parse response
             result_text = response.choices[0].message.content
-            extracted_data = self._parse_extraction_result(result_text)
+            extracted_data = self.result_parser.parse(result_text)
             
             return extracted_data
             
@@ -268,54 +347,3 @@ class Extractor:
             log.exception("Extraction pipeline failed")
             raise ValueError(f"Extraction failed: {exc}") from exc
     
-    def _build_system_prompt(self, data_elements: List[Dict[str, Any]]) -> str:
-        """Build system prompt for extraction.
-        
-        Args:
-            data_elements: List of data elements to extract
-            
-        Returns:
-            System prompt string
-        """
-        element_descriptions = []
-        for element in data_elements:
-            required_text = " (REQUIRED)" if element.get('required', False) else ""
-            element_descriptions.append(
-                f"- {element['name']}: {element['description']} "
-                f"[format: {element.get('format', 'string')}]{required_text}"
-            )
-        
-        elements_text = "\n".join(element_descriptions)
-        
-        # Get prompt template from settings and substitute elements
-        prompt_template = self.settings.extraction_prompt
-        return prompt_template.replace("{elements}", elements_text)
-    
-    def _parse_extraction_result(self, result_text: str) -> Dict[str, Any]:
-        """Parse LLM response into structured data.
-        
-        Args:
-            result_text: Raw LLM response text
-            
-        Returns:
-            Parsed data dictionary
-            
-        Raises:
-            ValueError: If response cannot be parsed as JSON
-        """
-        try:
-            # Try to extract JSON from response
-            result_text = result_text.strip()
-            
-            # Find JSON object boundaries
-            start_idx = result_text.find('{')
-            end_idx = result_text.rfind('}')
-            
-            if start_idx == -1 or end_idx == -1:
-                raise ValueError("No JSON object found in response")
-            
-            json_text = result_text[start_idx:end_idx + 1]
-            return json.loads(json_text)
-            
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"Failed to parse extraction result as JSON: {exc}") from exc
