@@ -23,7 +23,8 @@ class Extractor:
         # DefaultAzureCredential handles token refresh automatically
         self.client = ChatCompletionsClient(
             endpoint=settings.azure_ai_foundry_endpoint,
-            credential=settings.azure_credential
+            credential=settings.azure_credential,
+            credential_scopes=["https://cognitiveservices.azure.com/.default"]
         )
     
     def extract(self, text: str, data_elements: List[Dict[str, Any]]) -> Dict[str, Any]:
