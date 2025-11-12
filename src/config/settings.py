@@ -333,6 +333,8 @@ def load_settings_from_json(config_path: str = "config.json") -> Settings:
     
     # Override with environment variables (they take precedence)
     env_overrides = {}
+    
+    # Azure AI Foundry overrides
     if os.getenv('AZURE_AI_FOUNDRY_ENDPOINT'):
         env_overrides.setdefault('azure_ai_foundry', {})['project_endpoint'] = os.getenv('AZURE_AI_FOUNDRY_ENDPOINT')
     if os.getenv('AZURE_EXTRACTION_MODEL'):
@@ -341,10 +343,28 @@ def load_settings_from_json(config_path: str = "config.json") -> Settings:
         env_overrides.setdefault('azure_ai_foundry', {})['validation_model'] = os.getenv('AZURE_VALIDATION_MODEL')
     if os.getenv('AZURE_USE_MANAGED_IDENTITY'):
         env_overrides.setdefault('azure_ai_foundry', {})['use_managed_identity'] = os.getenv('AZURE_USE_MANAGED_IDENTITY').lower() == 'true'
+    
+    # Azure Document Intelligence overrides
+    if os.getenv('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT'):
+        env_overrides.setdefault('azure_document_intelligence', {})['endpoint'] = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT')
+    if os.getenv('AZURE_DOCUMENT_INTELLIGENCE_KEY'):
+        env_overrides.setdefault('azure_document_intelligence', {})['key'] = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_KEY')
+    if os.getenv('AZURE_DOCUMENT_INTELLIGENCE_USE_MANAGED_IDENTITY'):
+        env_overrides.setdefault('azure_document_intelligence', {})['use_managed_identity'] = os.getenv('AZURE_DOCUMENT_INTELLIGENCE_USE_MANAGED_IDENTITY').lower() == 'true'
+    
+    # Server port overrides
     if os.getenv('MCP_SERVER_PORT'):
         env_overrides.setdefault('server_ports', {})['mcp'] = int(os.getenv('MCP_SERVER_PORT'))
     if os.getenv('A2A_SERVER_PORT'):
         env_overrides.setdefault('server_ports', {})['a2a'] = int(os.getenv('A2A_SERVER_PORT'))
+    
+    # Prompt overrides
+    if os.getenv('EXTRACTION_PROMPT'):
+        env_overrides.setdefault('prompts', {})['extraction'] = os.getenv('EXTRACTION_PROMPT')
+    if os.getenv('VALIDATION_PROMPT'):
+        env_overrides.setdefault('prompts', {})['validation'] = os.getenv('VALIDATION_PROMPT')
+    
+    # Core configuration overrides
     if os.getenv('MIN_CONFIDENCE_THRESHOLD'):
         env_overrides['min_confidence_threshold'] = float(os.getenv('MIN_CONFIDENCE_THRESHOLD'))
     if os.getenv('MAX_BUFFER_SIZE_MB'):

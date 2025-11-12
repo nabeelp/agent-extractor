@@ -1,9 +1,21 @@
 {
   "minConfidenceThreshold": 0.8,
   "maxBufferSizeMB": 10,
+  "azureDocumentIntelligence": {
+    "endpoint": "https://YOUR_ENDPOINT.cognitiveservices.azure.com/",
+    "useManagedIdentity": true
+  },
   "azureAIFoundry": {
     "projectEndpoint": "https://npaifoundry.cognitiveservices.azure.com/openai/deployments/gpt-4o",
-    "extractionModel": "gpt-4o"
+    "extractionModel": "gpt-4o",
+    "validationModel": "gpt-4o-mini"
+  },
+  "routingThresholds": {
+    "useDocumentIntelligence": {
+      "scannedDocument": true,
+      "lowTextDensity": true,
+      "poorImageQuality": true
+    }
   },
   "serverPorts": {
     "mcp": 8000
