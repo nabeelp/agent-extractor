@@ -9,6 +9,7 @@ from typing import Any, Dict
 from PIL import Image
 from PyPDF2 import PdfReader
 
+from ..exceptions import DocumentRoutingError, UnsupportedFileTypeError
 from .document_parser import DocumentContext
 
 
@@ -95,8 +96,12 @@ class DocumentRouter:
                 metadata=metadata,
             )
             
+        except DocumentRoutingError:
+            raise
+        except UnsupportedFileTypeError:
+            raise
         except Exception as e:
-            raise ValueError(f"Document routing failed: {str(e)}")
+            raise DocumentRoutingError(f"Document routing failed: {str(e)}") from e
     
     def _detect_document_type(self, file_type: str) -> DocumentType:
         """Detect and validate document type.
@@ -119,10 +124,8 @@ class DocumentRouter:
         }
         
         if file_type not in file_type_map:
-            supported = ", ".join(file_type_map.keys())
-            raise ValueError(
-                f"Unsupported file type: {file_type}. Supported types: {supported}"
-            )
+            supported = list(file_type_map.keys())
+            raise UnsupportedFileTypeError(file_type, supported)
         
         return file_type_map[file_type]
     

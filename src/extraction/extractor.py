@@ -17,6 +17,15 @@ from azure.ai.inference.models import (
 from azure.core.credentials import AzureKeyCredential
 
 from ..config.settings import Settings
+from ..exceptions import (
+    DocumentIntelligenceError,
+    DocumentIntelligenceNotConfiguredError,
+    ExtractionError,
+    InvalidExtractionResultError,
+    RequiredFieldMissingError,
+    TextExtractionError,
+    VisionExtractionError,
+)
 
 
 log = logging.getLogger(__name__)
@@ -102,13 +111,15 @@ class ExtractionResultParser:
             end_idx = result_text.rfind("}")
 
             if start_idx == -1 or end_idx == -1:
-                raise ValueError("No JSON object found in response")
+                raise InvalidExtractionResultError("No JSON object found in response")
 
             json_text = result_text[start_idx : end_idx + 1]
             return json.loads(json_text)
 
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Failed to parse extraction result as JSON: {exc}") from exc
+            raise InvalidExtractionResultError(
+                f"Failed to parse extraction result as JSON: {exc}"
+            ) from exc
 
 
 def build_helpers(settings: Settings) -> ExtractionHelpers:
@@ -175,9 +186,11 @@ class Extractor:
             
             return extracted_data
             
+        except InvalidExtractionResultError:
+            raise
         except Exception as exc:
             log.exception("Text extraction failed")
-            raise ValueError(f"Text extraction failed: {exc}") from exc
+            raise TextExtractionError(f"Text extraction failed: {exc}") from exc
     
     def extract_from_image(
         self,
@@ -235,9 +248,11 @@ class Extractor:
             
             return extracted_data
             
+        except InvalidExtractionResultError:
+            raise
         except Exception as exc:
             log.exception("Vision extraction failed")
-            raise ValueError(f"Vision extraction failed: {exc}") from exc
+            raise VisionExtractionError(f"Vision extraction failed: {exc}") from exc
     
     def extract_with_document_intelligence(
         self,
@@ -257,7 +272,7 @@ class Extractor:
             ValueError: If Document Intelligence is not configured or extraction fails
         """
         if not self.doc_intelligence_client:
-            raise ValueError(
+            raise DocumentIntelligenceNotConfiguredError(
                 "Azure Document Intelligence not configured. "
                 "Add azureDocumentIntelligence section to config.json",
             )
@@ -286,16 +301,26 @@ class Extractor:
                     text_content.append(f"=== Page {page.page_number} ===\n" + "\n".join(page_text))
             
             if not text_content:
-                raise ValueError("No text extracted by Document Intelligence")
+                raise DocumentIntelligenceError("No text extracted by Document Intelligence")
             
             full_text = "\n\n".join(text_content)
             
             # Use LLM for structured extraction from OCR text
             return self.extract_from_text(full_text, data_elements)
             
+        except DocumentIntelligenceNotConfiguredError:
+            raise
+        except DocumentIntelligenceError:
+            raise
+        except TextExtractionError:
+            raise
+        except InvalidExtractionResultError:
+            raise
         except Exception as exc:
             log.exception("Document Intelligence extraction failed")
-            raise ValueError(f"Document Intelligence extraction failed: {exc}") from exc
+            raise DocumentIntelligenceError(
+                f"Document Intelligence extraction failed: {exc}"
+            ) from exc
     
     def extract(
         self,
@@ -332,18 +357,23 @@ class Extractor:
             elif text:
                 extracted_data = self.extract_from_text(text, data_elements)
             else:
-                raise ValueError("No valid input provided for extraction")
+                raise ExtractionError("No valid input provided for extraction")
             
             # Validate required fields
             for element in data_elements:
                 if element.get('required', False):
                     field_name = element['name']
                     if field_name not in extracted_data or extracted_data[field_name] is None:
-                        raise ValueError(f"Required field '{field_name}' not found in document")
+                        field_description = element.get('description')
+                        raise RequiredFieldMissingError(field_name, field_description)
             
             return extracted_data
             
+        except (DocumentIntelligenceNotConfiguredError, DocumentIntelligenceError,
+                TextExtractionError, VisionExtractionError, InvalidExtractionResultError,
+                RequiredFieldMissingError, ExtractionError):
+            raise
         except Exception as exc:
             log.exception("Extraction pipeline failed")
-            raise ValueError(f"Extraction failed: {exc}") from exc
+            raise ExtractionError(f"Extraction failed: {exc}") from exc
     

@@ -9,6 +9,13 @@ from docx import Document
 from PIL import Image
 from PyPDF2 import PdfReader
 
+from ..exceptions import (
+    Base64DecodingError,
+    DOCXParsingError,
+    ImageParsingError,
+    PDFParsingError,
+)
+
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +34,7 @@ class DocumentContext:
             try:
                 self._raw_bytes = base64.b64decode(self.base64_data)
             except base64.binascii.Error as exc:  # pragma: no cover - defensive
-                raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+                raise Base64DecodingError(f"Invalid base64 encoding: {exc}") from exc
         return self._raw_bytes
 
 
@@ -56,7 +63,7 @@ class DocumentParser:
             reader = PdfReader(pdf_file)
             
             if len(reader.pages) == 0:
-                raise ValueError("PDF document has no pages")
+                raise PDFParsingError("PDF document has no pages")
             
             # Extract text from pages
             if all_pages:
@@ -68,7 +75,7 @@ class DocumentParser:
                         texts.append(f"=== Page {page_num} ===\n{page_text.strip()}")
                 
                 if not texts:
-                    raise ValueError("No text could be extracted from any PDF page")
+                    raise PDFParsingError("No text could be extracted from any PDF page")
                 
                 return "\n\n".join(texts)
             else:
@@ -77,14 +84,16 @@ class DocumentParser:
                 text = first_page.extract_text()
                 
                 if not text or not text.strip():
-                    raise ValueError("No text could be extracted from PDF first page")
+                    raise PDFParsingError("No text could be extracted from PDF first page")
                 
                 return text.strip()
             
-        except base64.binascii.Error as exc:
-            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        except Base64DecodingError:
+            raise
+        except PDFParsingError:
+            raise
         except Exception as exc:
-            raise ValueError(f"Failed to parse PDF document: {exc}") from exc
+            raise PDFParsingError(f"Failed to parse PDF document: {exc}") from exc
     
     def parse_docx(
         self,
@@ -124,14 +133,16 @@ class DocumentParser:
                         paragraphs.append(" | ".join(row_data))
             
             if not paragraphs:
-                raise ValueError("No text could be extracted from DOCX document")
+                raise DOCXParsingError("No text could be extracted from DOCX document")
             
             return "\n\n".join(paragraphs)
             
-        except base64.binascii.Error as exc:
-            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        except Base64DecodingError:
+            raise
+        except DOCXParsingError:
+            raise
         except Exception as exc:
-            raise ValueError(f"Failed to parse DOCX document: {exc}") from exc
+            raise DOCXParsingError(f"Failed to parse DOCX document: {exc}") from exc
     
     def parse_image(
         self,
@@ -171,10 +182,12 @@ class DocumentParser:
                 "media_type": f"image/{context.file_type.lower()}"
             }
             
-        except base64.binascii.Error as exc:
-            raise ValueError(f"Invalid base64 encoding: {exc}") from exc
+        except Base64DecodingError:
+            raise
+        except ImageParsingError:
+            raise
         except Exception as exc:
-            raise ValueError(f"Failed to parse image: {exc}") from exc
+            raise ImageParsingError(f"Failed to parse image: {exc}") from exc
 
 
 _PARSER = DocumentParser()
@@ -201,14 +214,16 @@ def parse_document(
     elif context.file_type == 'docx':
         return _PARSER.parse_docx(context)
     elif context.file_type in ['png', 'jpg', 'jpeg']:
-        raise ValueError(
+        from ..exceptions import DocumentParsingError
+        raise DocumentParsingError(
             f"Image files ({context.file_type}) require vision-based extraction. "
             "Use parse_image() instead."
         )
     else:
-        raise ValueError(
-            f"Unsupported file type: {context.file_type}. "
-            "Supported types: pdf, docx, png, jpg, jpeg"
+        from ..exceptions import UnsupportedFileTypeError
+        raise UnsupportedFileTypeError(
+            context.file_type,
+            ['pdf', 'docx', 'png', 'jpg', 'jpeg']
         )
 
 

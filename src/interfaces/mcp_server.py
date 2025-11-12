@@ -10,6 +10,19 @@ import uvicorn
 
 from ..agents.extractor_agent import create_extractor_agent
 from ..config.settings import get_settings
+from ..exceptions import (
+    Base64DecodingError,
+    ConfigurationError,
+    DocumentExtractionError,
+    DocumentIntelligenceError,
+    DocumentIntelligenceNotConfiguredError,
+    DocumentParsingError,
+    DocumentRoutingError,
+    ExtractionError,
+    InvalidExtractionResultError,
+    RequiredFieldMissingError,
+    UnsupportedFileTypeError,
+)
 
 
 # Request/Response models for MCP tool
@@ -38,6 +51,135 @@ class ExtractDocumentResponse(BaseModel):
 
 # Configure module logger
 log = logging.getLogger(__name__)
+
+
+def map_exception_to_http_error(exc: Exception) -> HTTPException:
+    """Map domain exceptions to HTTP errors with appropriate status codes.
+    
+    This centralizes error handling logic and ensures consistent error responses
+    across all MCP endpoints.
+    
+    Args:
+        exc: The exception to map
+        
+    Returns:
+        HTTPException with appropriate status code and detail message
+    """
+    # Client errors (4xx)
+    if isinstance(exc, UnsupportedFileTypeError):
+        return HTTPException(
+            status_code=400,
+            detail={
+                "error": "unsupported_file_type",
+                "message": str(exc),
+                "file_type": exc.file_type,
+                "supported_types": exc.supported_types,
+            },
+        )
+    
+    if isinstance(exc, Base64DecodingError):
+        return HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_base64",
+                "message": str(exc),
+            },
+        )
+    
+    if isinstance(exc, DocumentParsingError):
+        return HTTPException(
+            status_code=400,
+            detail={
+                "error": "document_parsing_failed",
+                "message": str(exc),
+            },
+        )
+    
+    if isinstance(exc, RequiredFieldMissingError):
+        return HTTPException(
+            status_code=422,
+            detail={
+                "error": "required_field_missing",
+                "message": str(exc),
+                "field_name": exc.field_name,
+                "field_description": exc.details.get("field_description"),
+            },
+        )
+    
+    if isinstance(exc, InvalidExtractionResultError):
+        return HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_extraction_result",
+                "message": str(exc),
+            },
+        )
+    
+    if isinstance(exc, DocumentRoutingError):
+        return HTTPException(
+            status_code=400,
+            detail={
+                "error": "document_routing_failed",
+                "message": str(exc),
+            },
+        )
+    
+    # Server errors (5xx)
+    if isinstance(exc, ConfigurationError):
+        return HTTPException(
+            status_code=500,
+            detail={
+                "error": "configuration_error",
+                "message": str(exc),
+            },
+        )
+    
+    if isinstance(exc, DocumentIntelligenceNotConfiguredError):
+        return HTTPException(
+            status_code=503,
+            detail={
+                "error": "document_intelligence_not_configured",
+                "message": str(exc),
+            },
+        )
+    
+    if isinstance(exc, DocumentIntelligenceError):
+        return HTTPException(
+            status_code=502,
+            detail={
+                "error": "document_intelligence_failed",
+                "message": str(exc),
+            },
+        )
+    
+    if isinstance(exc, ExtractionError):
+        return HTTPException(
+            status_code=500,
+            detail={
+                "error": "extraction_failed",
+                "message": str(exc),
+            },
+        )
+    
+    # Generic document extraction errors
+    if isinstance(exc, DocumentExtractionError):
+        return HTTPException(
+            status_code=500,
+            detail={
+                "error": "document_extraction_error",
+                "message": str(exc),
+            },
+        )
+    
+    # Unknown errors (500)
+    log.exception("Unexpected error: %s", exc)
+    return HTTPException(
+        status_code=500,
+        detail={
+            "error": "internal_server_error",
+            "message": "An unexpected error occurred",
+        },
+    )
 
 
 # Create FastAPI app
@@ -83,7 +225,7 @@ async def extract_document_data(request: ExtractDocumentRequest) -> ExtractDocum
         ExtractDocumentResponse with extracted data, metadata, or errors
         
     Raises:
-        HTTPException: If request validation fails
+        HTTPException: If request validation fails or extraction errors occur
     """
     agent = getattr(app.state, "agent", None)
     if agent is None:
@@ -111,9 +253,12 @@ async def extract_document_data(request: ExtractDocumentRequest) -> ExtractDocum
         log.info("Extraction completed | success=%s", result.success)
         return ExtractDocumentResponse(**response_dict)
 
-    except Exception as exc:  # pragma: no cover - pass context upstream
-        log.exception("Unexpected error during extraction")
-        raise HTTPException(status_code=500, detail=str(exc))
+    except DocumentExtractionError as exc:
+        # Use centralized error mapping for all domain exceptions
+        raise map_exception_to_http_error(exc)
+    except Exception as exc:
+        # Catch-all for unexpected errors
+        raise map_exception_to_http_error(exc)
 
 
 def start_server(host: str = "0.0.0.0", port: Optional[int] = None):

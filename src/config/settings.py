@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ..exceptions import ConfigurationError
+
 
 log = logging.getLogger(__name__)
 
@@ -59,16 +61,16 @@ class AzureAIFoundryConfig(BaseModel):
     @classmethod
     def validate_endpoint(cls, value: str) -> str:
         if not value:
-            raise ValueError("Azure AI Foundry project endpoint is required")
+            raise ConfigurationError("Azure AI Foundry project endpoint is required")
         if not value.startswith(("http://", "https://")):
-            raise ValueError(f"Invalid endpoint URL format: {value}")
+            raise ConfigurationError(f"Invalid endpoint URL format: {value}")
         return value.rstrip("/")
 
     @field_validator("extraction_model")
     @classmethod
     def validate_extraction_model(cls, value: str) -> str:
         if not value:
-            raise ValueError("Extraction model name is required")
+            raise ConfigurationError("Extraction model name is required")
         return value
 
 
@@ -103,7 +105,7 @@ class AzureDocumentIntelligenceConfig(BaseModel):
     @classmethod
     def validate_endpoint(cls, value: Optional[str]) -> Optional[str]:
         if value and not value.startswith(("http://", "https://")):
-            raise ValueError(f"Invalid endpoint URL format: {value}")
+            raise ConfigurationError(f"Invalid endpoint URL format: {value}")
         return value.rstrip("/") if value else None
 
 
@@ -132,7 +134,7 @@ class ServerPortsConfig(BaseModel):
     @model_validator(mode="after")
     def validate_unique_ports(self) -> "ServerPortsConfig":
         if self.mcp == self.a2a:
-            raise ValueError("MCP and A2A server ports must be different")
+            raise ConfigurationError("MCP and A2A server ports must be different")
         return self
 
 
@@ -374,7 +376,7 @@ class Settings(BaseSettings):
 
         if errors:
             error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors)
-            raise ValueError(error_msg)
+            raise ConfigurationError(error_msg)
 
         log.info("Configuration validation successful")
         log.info("Azure AI Foundry endpoint: %s", self.azure_ai_foundry_endpoint)
