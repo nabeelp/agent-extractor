@@ -177,6 +177,9 @@ class DocumentParser:
             raise ValueError(f"Failed to parse image: {exc}") from exc
 
 
+_PARSER = DocumentParser()
+
+
 def parse_document(
     context: DocumentContext,
     all_pages: bool = True,
@@ -193,11 +196,10 @@ def parse_document(
     Raises:
         ValueError: If file type not supported or parsing fails
     """
-    parser = DocumentParser()
     if context.file_type == 'pdf':
-        return parser.parse_pdf(context, all_pages)
+        return _PARSER.parse_pdf(context, all_pages)
     elif context.file_type == 'docx':
-        return parser.parse_docx(context)
+        return _PARSER.parse_docx(context)
     elif context.file_type in ['png', 'jpg', 'jpeg']:
         raise ValueError(
             f"Image files ({context.file_type}) require vision-based extraction. "
@@ -224,5 +226,4 @@ def parse_image_document(
     Raises:
         ValueError: If parsing fails
     """
-    parser = DocumentParser()
-    return parser.parse_image(context)
+    return _PARSER.parse_image(context)
