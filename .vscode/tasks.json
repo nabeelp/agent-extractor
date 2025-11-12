@@ -1,0 +1,77 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run Main Application",
+            "type": "shell",
+            "command": "uv run python -m src.main",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "label": "Run MCP Server",
+            "type": "shell",
+            "command": "uv run python -m src.interfaces.mcp_server",
+            "group": "build",
+            "problemMatcher": [],
+            "isBackground": true,
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "uv run pytest tests/ -v",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Install Dependencies",
+            "type": "shell",
+            "command": "uv sync && uv pip install agent-framework-azure-ai --pre",
+            "group": "none",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Type Check with mypy",
+            "type": "shell",
+            "command": "uv run mypy src/",
+            "group": "test",
+            "problemMatcher": [
+                "$mypy"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        },
+        {
+            "label": "Lint with flake8",
+            "type": "shell",
+            "command": "uv run flake8 src/",
+            "group": "test",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            }
+        }
+    ]
+}
