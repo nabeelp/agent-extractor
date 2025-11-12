@@ -56,12 +56,12 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Add configuration validation on startup with detailed error messages
 - [x] Support environment variable overrides for all config values
 
-### Phase 8: Multi-Format Support
-- [ ] Add DOCX support to document_parser.py (python-docx)
-- [ ] Add image support (PNG, JPG) to document_parser.py (Pillow)
-- [ ] Implement src/extraction/router.py (document type detection)
-- [ ] Add Azure Document Intelligence integration for scanned/complex documents
-- [ ] Add multi-page document aggregation
+### Phase 8: Multi-Format Support ✓
+- [x] Add DOCX support to document_parser.py (python-docx)
+- [x] Add image support (PNG, JPG) to document_parser.py (Pillow)
+- [x] Implement src/extraction/router.py (document type detection)
+- [x] Add Azure Document Intelligence integration for scanned/complex documents
+- [x] Add multi-page document aggregation
 
 ### Phase 9: Validation & Confidence Scoring
 - [ ] Implement src/extraction/validator.py (gpt-4o-mini for validation)
