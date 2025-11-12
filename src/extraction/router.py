@@ -27,13 +27,31 @@ class DocumentType(Enum):
 class DocumentRouter:
     """Analyze documents and route to optimal extraction method."""
     
-    def __init__(self, use_document_intelligence: bool = False):
+    def __init__(
+        self,
+        use_document_intelligence: bool = False,
+        text_density_threshold: int = 100,
+        low_resolution_threshold: int = 500000,
+        use_di_for_scanned: bool = True,
+        use_di_for_low_text: bool = True,
+        use_di_for_poor_quality: bool = True
+    ):
         """Initialize document router.
         
         Args:
             use_document_intelligence: Whether Azure Document Intelligence is available
+            text_density_threshold: Minimum chars/page for text-based extraction
+            low_resolution_threshold: Pixel count threshold for low resolution
+            use_di_for_scanned: Use Document Intelligence for scanned documents
+            use_di_for_low_text: Use Document Intelligence for low text density
+            use_di_for_poor_quality: Use Document Intelligence for poor image quality
         """
         self.use_document_intelligence = use_document_intelligence
+        self.text_density_threshold = text_density_threshold
+        self.low_resolution_threshold = low_resolution_threshold
+        self.use_di_for_scanned = use_di_for_scanned
+        self.use_di_for_low_text = use_di_for_low_text
+        self.use_di_for_poor_quality = use_di_for_poor_quality
     
     def analyze_and_route(
         self,
@@ -206,7 +224,7 @@ class DocumentRouter:
             
             # Assess image quality (very basic heuristic)
             total_pixels = width * height
-            is_low_resolution = total_pixels < 500000  # < 0.5 megapixels
+            is_low_resolution = total_pixels < self.low_resolution_threshold
             
             return {
                 "width": width,
@@ -255,24 +273,32 @@ class DocumentRouter:
             is_scanned = metadata.get("is_likely_scanned", False)
             text_density = metadata.get("text_density", 0)
             
-            # Route to Document Intelligence if available and needed
-            if self.use_document_intelligence and (is_scanned or text_density < 100):
+            # Determine if Document Intelligence should be used based on configured thresholds
+            should_use_di = False
+            if self.use_document_intelligence:
+                if is_scanned and self.use_di_for_scanned:
+                    should_use_di = True
+                elif text_density < self.text_density_threshold and self.use_di_for_low_text:
+                    should_use_di = True
+            
+            # Route to Document Intelligence if conditions are met
+            if should_use_di:
                 return (
                     ExtractionMethod.DOCUMENT_INTELLIGENCE,
-                    f"Scanned/low-text PDF (density: {text_density}) requires OCR preprocessing"
+                    f"Scanned/low-text PDF (density: {text_density}, threshold: {self.text_density_threshold}) requires OCR preprocessing"
                 )
             
             # Use LLM with vision for scanned PDFs if no Document Intelligence
-            if is_scanned or text_density < 100:
+            if is_scanned or text_density < self.text_density_threshold:
                 return (
                     ExtractionMethod.LLM_VISION,
-                    f"Scanned/low-text PDF (density: {text_density}) requires vision-capable model"
+                    f"Scanned/low-text PDF (density: {text_density}, threshold: {self.text_density_threshold}) requires vision-capable model"
                 )
             
             # Digital PDF with good text extraction
             return (
                 ExtractionMethod.LLM_TEXT,
-                f"Digital PDF with extractable text (density: {text_density})"
+                f"Digital PDF with extractable text (density: {text_density}, threshold: {self.text_density_threshold})"
             )
         
         # Default to text-based extraction
@@ -285,7 +311,12 @@ class DocumentRouter:
 def route_document(
     document_base64: str,
     file_type: str,
-    use_document_intelligence: bool = False
+    use_document_intelligence: bool = False,
+    text_density_threshold: int = 100,
+    low_resolution_threshold: int = 500000,
+    use_di_for_scanned: bool = True,
+    use_di_for_low_text: bool = True,
+    use_di_for_poor_quality: bool = True
 ) -> Dict[str, Any]:
     """Route document to optimal extraction method.
     
@@ -293,6 +324,11 @@ def route_document(
         document_base64: Base64 encoded document
         file_type: Document file type
         use_document_intelligence: Whether Azure Document Intelligence is available
+        text_density_threshold: Minimum chars/page for text-based extraction
+        low_resolution_threshold: Pixel count threshold for low resolution
+        use_di_for_scanned: Use Document Intelligence for scanned documents
+        use_di_for_low_text: Use Document Intelligence for low text density
+        use_di_for_poor_quality: Use Document Intelligence for poor image quality
         
     Returns:
         Routing decision dictionary
@@ -300,5 +336,12 @@ def route_document(
     Raises:
         ValueError: If routing fails
     """
-    router = DocumentRouter(use_document_intelligence)
+    router = DocumentRouter(
+        use_document_intelligence=use_document_intelligence,
+        text_density_threshold=text_density_threshold,
+        low_resolution_threshold=low_resolution_threshold,
+        use_di_for_scanned=use_di_for_scanned,
+        use_di_for_low_text=use_di_for_low_text,
+        use_di_for_poor_quality=use_di_for_poor_quality
+    )
     return router.analyze_and_route(document_base64, file_type)

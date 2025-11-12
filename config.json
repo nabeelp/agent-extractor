@@ -12,10 +12,12 @@
   },
   "routingThresholds": {
     "useDocumentIntelligence": {
-      "scannedDocument": true,
-      "lowTextDensity": true,
-      "poorImageQuality": true
-    }
+      "scannedDocument": false,
+      "lowTextDensity": false,
+      "poorImageQuality": false
+    },
+    "textDensityThreshold": 100,
+    "lowResolutionThreshold": 500000
   },
   "serverPorts": {
     "mcp": 8000

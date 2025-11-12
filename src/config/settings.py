@@ -114,6 +114,42 @@ class ServerPortsConfig(BaseModel):
         return self
 
 
+class UseDocumentIntelligenceConfig(BaseModel):
+    """Configuration for when to use Document Intelligence."""
+    
+    scanned_document: bool = Field(
+        default=True,
+        description="Use Document Intelligence for scanned documents"
+    )
+    low_text_density: bool = Field(
+        default=True,
+        description="Use Document Intelligence for documents with low text density"
+    )
+    poor_image_quality: bool = Field(
+        default=True,
+        description="Use Document Intelligence for poor quality images"
+    )
+
+
+class RoutingThresholdsConfig(BaseModel):
+    """Routing thresholds configuration."""
+    
+    use_document_intelligence: UseDocumentIntelligenceConfig = Field(
+        default_factory=UseDocumentIntelligenceConfig,
+        description="Criteria for using Document Intelligence"
+    )
+    text_density_threshold: int = Field(
+        default=100,
+        ge=0,
+        description="Minimum text density (chars per page) for text-based extraction"
+    )
+    low_resolution_threshold: int = Field(
+        default=500000,
+        ge=0,
+        description="Pixel count threshold for low resolution images"
+    )
+
+
 class PromptsConfig(BaseModel):
     """Prompt templates configuration."""
     
@@ -170,6 +206,7 @@ class Settings(BaseSettings):
     )
     azure_ai_foundry: AzureAIFoundryConfig
     azure_document_intelligence: Optional[AzureDocumentIntelligenceConfig] = None
+    routing_thresholds: RoutingThresholdsConfig = Field(default_factory=RoutingThresholdsConfig)
     server_ports: ServerPortsConfig = Field(default_factory=ServerPortsConfig)
     prompts: PromptsConfig = Field(default_factory=PromptsConfig)
     
@@ -312,6 +349,15 @@ def load_settings_from_json(config_path: str = "config.json") -> Settings:
             'extraction_model': config_data.get('azureAIFoundry', {}).get('extractionModel'),
             'validation_model': config_data.get('azureAIFoundry', {}).get('validationModel'),
             'use_managed_identity': config_data.get('azureAIFoundry', {}).get('useManagedIdentity', False),
+        },
+        'routing_thresholds': {
+            'use_document_intelligence': {
+                'scanned_document': config_data.get('routingThresholds', {}).get('useDocumentIntelligence', {}).get('scannedDocument', True),
+                'low_text_density': config_data.get('routingThresholds', {}).get('useDocumentIntelligence', {}).get('lowTextDensity', True),
+                'poor_image_quality': config_data.get('routingThresholds', {}).get('useDocumentIntelligence', {}).get('poorImageQuality', True),
+            },
+            'text_density_threshold': config_data.get('routingThresholds', {}).get('textDensityThreshold', 100),
+            'low_resolution_threshold': config_data.get('routingThresholds', {}).get('lowResolutionThreshold', 500000),
         },
         'server_ports': {
             'mcp': config_data.get('serverPorts', {}).get('mcp', 8000),

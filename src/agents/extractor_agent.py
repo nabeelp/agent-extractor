@@ -105,7 +105,12 @@ class ExtractorAgent:
             routing_result = route_document(
                 document_base64,
                 file_type,
-                use_document_intelligence=self.has_document_intelligence
+                use_document_intelligence=self.has_document_intelligence,
+                text_density_threshold=self.settings.routing_thresholds.text_density_threshold,
+                low_resolution_threshold=self.settings.routing_thresholds.low_resolution_threshold,
+                use_di_for_scanned=self.settings.routing_thresholds.use_document_intelligence.scanned_document,
+                use_di_for_low_text=self.settings.routing_thresholds.use_document_intelligence.low_text_density,
+                use_di_for_poor_quality=self.settings.routing_thresholds.use_document_intelligence.poor_image_quality
             )
             
             method = routing_result["method"]
