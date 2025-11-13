@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 import uvicorn
 
-from ..agents.extractor_agent import create_extractor_agent
+from ..agents.orchestrator import create_orchestrator
 from ..config.settings import get_settings
 from ..exceptions import (
     Base64DecodingError,
@@ -45,6 +45,8 @@ class ExtractDocumentResponse(BaseModel):
     """Response from extract_document_data tool."""
     success: bool = Field(..., description="Whether extraction succeeded")
     extractedData: Dict[str, Any] = Field(default_factory=dict, description="Extracted data with field names as keys")
+    confidence: Optional[Dict[str, float]] = Field(default=None, description="Per-field confidence scores (0.0-1.0)")
+    overall_confidence: Optional[float] = Field(default=None, description="Overall confidence score")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Routing and extraction context metadata")
     errors: Optional[List[str]] = Field(default=None, description="Error messages if extraction failed")
 
@@ -188,16 +190,14 @@ app = FastAPI(
     description="Document extraction agent with MCP (Model Context Protocol) interface",
     version="0.1.0"
 )
-
-
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Initialise shared settings and agent instances."""
+    """Initialise shared settings and orchestrator instance."""
     settings = get_settings()
     app.state.settings = settings
-    app.state.agent = create_extractor_agent(settings)
+    app.state.orchestrator = create_orchestrator(settings)
     log.info(
-        "MCP server initialised | port=%s",
+        "MCP server initialised with orchestrator | port=%s",
         settings.mcp_server_port,
     )
 
@@ -214,23 +214,25 @@ async def health_check():
 
 @app.post("/extract_document_data", response_model=ExtractDocumentResponse)
 async def extract_document_data(request: ExtractDocumentRequest) -> ExtractDocumentResponse:
-    """Extract structured data from a document.
+    """Extract structured data from a document using orchestrated workflow.
     
-    This is the main MCP tool endpoint for document extraction.
+    This endpoint uses the orchestrator to coordinate:
+    1. Extractor agent: Routes, parses, and extracts data
+    2. Validator agent: Validates data and assigns confidence scores
     
     Args:
         request: ExtractDocumentRequest with document and data elements
         
     Returns:
-        ExtractDocumentResponse with extracted data, metadata, or errors
+        ExtractDocumentResponse with extracted data, confidence scores, metadata, or errors
         
     Raises:
         HTTPException: If request validation fails or extraction errors occur
     """
-    agent = getattr(app.state, "agent", None)
-    if agent is None:
-        log.error("Extractor agent not initialised")
-        raise HTTPException(status_code=500, detail="Agent not initialised")
+    orchestrator = getattr(app.state, "orchestrator", None)
+    if orchestrator is None:
+        log.error("Orchestrator not initialised")
+        raise HTTPException(status_code=500, detail="Orchestrator not initialised")
 
     try:
         log.info(
@@ -241,16 +243,22 @@ async def extract_document_data(request: ExtractDocumentRequest) -> ExtractDocum
 
         data_elements = [element.model_dump() for element in request.dataElements]
 
+        # Execute orchestrated workflow (extraction → validation)
         loop = asyncio.get_running_loop()
         result = await asyncio.to_thread(
-            agent.extract_from_document,
+            orchestrator.orchestrate,
             request.documentBase64,
             request.fileType,
             data_elements,
         )
 
+        # Convert orchestration result to response
         response_dict = result.to_dict()
-        log.info("Extraction completed | success=%s", result.success)
+        log.info(
+            "Orchestration completed | success=%s | overall_confidence=%.2f",
+            result.success,
+            result.overall_confidence,
+        )
         return ExtractDocumentResponse(**response_dict)
 
     except DocumentExtractionError as exc:

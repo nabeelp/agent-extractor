@@ -28,7 +28,8 @@ class ExtractionResult:
         success: bool,
         data: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        document_content: Optional[str] = None,
     ):
         """Initialize extraction result.
         
@@ -37,11 +38,13 @@ class ExtractionResult:
             data: Extracted data dictionary (if successful)
             error: Error message (if failed)
             metadata: Additional metadata about extraction process
+            document_content: Original document text content (for validation handoff)
         """
         self.success = success
         self.data = data or {}
         self.error = error
         self.metadata = metadata or {}
+        self.document_content = document_content
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert result to dictionary.
@@ -158,14 +161,14 @@ class ExtractorAgent:
             )
             
             # Step 2 & 3: Parse and extract based on selected method
-            extracted_data = self._execute_extraction(
+            extracted_data, document_content = self._execute_extraction(
                 doc_context,
                 method,
                 data_elements,
                 doc_metadata,
             )
             
-            # Step 4: Return results with metadata
+            # Step 4: Return results with metadata and document content for handoff
             log.info("Extraction completed successfully")
             return ExtractionResult(
                 success=True,
@@ -175,7 +178,8 @@ class ExtractorAgent:
                     "document_type": doc_type.value,
                     "routing_reasoning": reasoning,
                     **doc_metadata
-                }
+                },
+                document_content=document_content,  # Preserve for validation handoff
             )
             
         except ValueError as exc:
@@ -192,7 +196,7 @@ class ExtractorAgent:
         method: ExtractionMethod,
         data_elements: List[Dict[str, Any]],
         doc_metadata: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> tuple[Dict[str, Any], Optional[str]]:
         """Execute extraction using the selected method.
         
         Args:
@@ -202,7 +206,7 @@ class ExtractorAgent:
             doc_metadata: Document metadata from routing
             
         Returns:
-            Extracted data dictionary
+            Tuple of (extracted_data, document_content) for validation handoff
             
         Raises:
             ValueError: If extraction fails
@@ -213,11 +217,16 @@ class ExtractorAgent:
         if strategy is None:
             raise ValueError(f"Unsupported extraction method: {method}")
 
-        return strategy(
+        extracted_data = strategy(
             context,
             data_elements,
             doc_metadata,
         )
+        
+        # Get document content for validation (if available)
+        document_content = self._get_document_content(context, method)
+        
+        return extracted_data, document_content
 
     def _extract_with_text(
         self,
@@ -260,7 +269,7 @@ class ExtractorAgent:
             data_elements=data_elements,
             image_data=document_data,
         )
-
+    
     def _extract_with_document_intelligence(
         self,
         context: DocumentContext,
@@ -274,6 +283,34 @@ class ExtractorAgent:
             document_base64=context.base64_data,
             use_document_intelligence=True,
         )
+    
+    def _get_document_content(
+        self,
+        context: DocumentContext,
+        method: ExtractionMethod,
+    ) -> Optional[str]:
+        """Get document content for validation handoff.
+        
+        Args:
+            context: Document context
+            method: Extraction method used
+            
+        Returns:
+            Document text content if available, None otherwise
+        """
+        try:
+            # For text-based methods, parse and return the content
+            if method in [ExtractionMethod.LLM_TEXT, ExtractionMethod.DOCUMENT_INTELLIGENCE]:
+                if context.file_type in ["pdf", "docx"]:
+                    return parse_document(context, all_pages=True)
+            
+            # For vision methods with images, return a placeholder
+            # (validator will use the original document if needed)
+            return None
+            
+        except Exception as exc:
+            log.warning("Failed to get document content for handoff: %s", exc)
+            return None
 
 
 def create_extractor_agent(settings: Settings) -> ExtractorAgent:

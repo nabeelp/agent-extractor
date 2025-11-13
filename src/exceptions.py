@@ -124,3 +124,8 @@ class InvalidExtractionResultError(ExtractionError):
 class DocumentIntelligenceNotConfiguredError(ExtractionError):
     """Raised when Document Intelligence is required but not configured."""
     pass
+
+
+class ValidationError(DocumentExtractionError):
+    """Raised when data validation fails."""
+    pass

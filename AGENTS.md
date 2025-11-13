@@ -63,13 +63,17 @@ Track implementation progress for the agent-extractor solution. Update status as
 - [x] Add Azure Document Intelligence integration for scanned/complex documents
 - [x] Add multi-page document aggregation
 
-### Phase 9: Validation & Confidence Scoring
-- [ ] Implement src/extraction/validator.py (gpt-4o-mini for validation)
-- [ ] Implement src/agents/validator_agent.py (validation agent)
-- [ ] Implement src/agents/orchestrator.py (sequential workflow coordinator)
-- [ ] Add per-field confidence scores
-- [ ] Add required field validation against configurable threshold
-- [ ] Test sequential workflow: Router → Extractor → Validator
+### Phase 9: Validation & Confidence Scoring (Agent Framework Migration) ✓
+- [x] Implement src/extraction/validator.py (gpt-4o-mini for validation)
+- [x] Implement src/agents/validator_agent.py (validation agent)
+- [x] Implement src/agents/orchestrator.py (sequential workflow coordinator)
+- [x] Refactor src/agents/extractor_agent.py for agent framework handoff patterns
+- [x] Update src/interfaces/mcp_server.py to use agent framework message/event patterns
+- [x] Update config.json and settings.py for agent framework orchestration settings
+- [x] Add per-field confidence scores
+- [x] Add required field validation against configurable threshold
+- [x] Add basic agent workflow logging (structured logging for agent handoffs)
+- [x] Test sequential workflow: Router → Extractor → Validator with agent framework orchestration
 
 ### Phase 10: Enhanced Error Handling & Resilience
 - [ ] Add buffer size validation
