@@ -111,7 +111,7 @@ class ExtractionOrchestrator:
         
         log.info("Extraction orchestrator initialized with sequential workflow")
     
-    def orchestrate(
+    async def orchestrate(
         self,
         document_base64: str,
         file_type: str,
@@ -135,7 +135,7 @@ class ExtractionOrchestrator:
         
         # Stage 1: Extraction
         log.info("[Stage 1/2] Starting extraction stage")
-        extraction_result: ExtractionResult = self.extractor_agent.extract_from_document(
+        extraction_result: ExtractionResult = await self.extractor_agent.extract_from_document(
             document_base64=document_base64,
             file_type=file_type,
             data_elements=data_elements,
@@ -174,7 +174,7 @@ class ExtractionOrchestrator:
             metadata=extraction_result.metadata,
         )
         
-        validation_output: ValidatorAgentOutput = self.validator_agent.validate(validator_input)
+        validation_output: ValidatorAgentOutput = await self.validator_agent.validate(validator_input)
         
         log.info(
             "[Stage 2/2] Validation completed | success=%s | overall_confidence=%.2f",

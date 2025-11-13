@@ -1,6 +1,5 @@
 """MCP (Model Context Protocol) HTTP server for document extraction."""
 
-import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -244,9 +243,7 @@ async def extract_document_data(request: ExtractDocumentRequest) -> ExtractDocum
         data_elements = [element.model_dump() for element in request.dataElements]
 
         # Execute orchestrated workflow (extraction → validation)
-        loop = asyncio.get_running_loop()
-        result = await asyncio.to_thread(
-            orchestrator.orchestrate,
+        result = await orchestrator.orchestrate(
             request.documentBase64,
             request.fileType,
             data_elements,

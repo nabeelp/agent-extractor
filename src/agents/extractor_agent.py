@@ -107,7 +107,7 @@ class ExtractorAgent:
             self.has_document_intelligence,
         )
     
-    def extract_from_document(
+    async def extract_from_document(
         self,
         document_base64: str,
         file_type: str,
@@ -161,7 +161,7 @@ class ExtractorAgent:
             )
             
             # Step 2 & 3: Parse and extract based on selected method
-            extracted_data, document_content = self._execute_extraction(
+            extracted_data, document_content = await self._execute_extraction(
                 doc_context,
                 method,
                 data_elements,
@@ -190,7 +190,7 @@ class ExtractorAgent:
             log.exception("Unexpected error during extraction")
             return ExtractionResult(success=False, error=f"Unexpected error: {exc}")
     
-    def _execute_extraction(
+    async def _execute_extraction(
         self,
         context: DocumentContext,
         method: ExtractionMethod,
@@ -217,7 +217,7 @@ class ExtractorAgent:
         if strategy is None:
             raise ValueError(f"Unsupported extraction method: {method}")
 
-        extracted_data = strategy(
+        extracted_data = await strategy(
             context,
             data_elements,
             doc_metadata,
@@ -228,7 +228,7 @@ class ExtractorAgent:
         
         return extracted_data, document_content
 
-    def _extract_with_text(
+    async def _extract_with_text(
         self,
         context: DocumentContext,
         data_elements: List[Dict[str, Any]],
@@ -238,12 +238,12 @@ class ExtractorAgent:
         text = parse_document(context, all_pages=True)
         log.debug("Parsed text document | chars=%s", len(text))
 
-        return self.extractor.extract(
+        return await self.extractor.extract(
             text=text,
             data_elements=data_elements,
         )
 
-    def _extract_with_vision(
+    async def _extract_with_vision(
         self,
         context: DocumentContext,
         data_elements: List[Dict[str, Any]],
@@ -264,20 +264,20 @@ class ExtractorAgent:
                 document_data.get("height"),
             )
 
-        return self.extractor.extract(
+        return await self.extractor.extract(
             text=None,
             data_elements=data_elements,
             image_data=document_data,
         )
     
-    def _extract_with_document_intelligence(
+    async def _extract_with_document_intelligence(
         self,
         context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _metadata: Dict[str, Any],
     ) -> Dict[str, Any]:
         # Hand off to the Document Intelligence + LLM flow when OCR preprocessing is needed.
-        return self.extractor.extract(
+        return await self.extractor.extract(
             text=None,
             data_elements=data_elements,
             document_base64=context.base64_data,

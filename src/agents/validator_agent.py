@@ -115,7 +115,7 @@ class ValidatorAgent:
             settings.min_confidence_threshold,
         )
     
-    def validate(
+    async def validate(
         self,
         validator_input: ValidatorAgentInput,
     ) -> ValidatorAgentOutput:
@@ -136,7 +136,7 @@ class ValidatorAgent:
             )
             
             # Execute validation using validator module
-            validation_result: ValidationResult = self.validator.validate(
+            validation_result: ValidationResult = await self.validator.validate(
                 document_content=validator_input.document_content,
                 data_elements=validator_input.data_elements,
                 extracted_data=validator_input.extracted_data,

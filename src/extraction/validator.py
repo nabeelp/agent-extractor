@@ -5,8 +5,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import SystemMessage, UserMessage
+from openai import AsyncAzureOpenAI
+from agent_framework.openai import OpenAIChatClient
+from agent_framework._types import ChatMessage
 
 from ..config.settings import Settings
 from ..exceptions import InvalidExtractionResultError, ValidationError
@@ -212,11 +213,28 @@ class Validator:
         """
         self.settings = settings
         
-        # Create chat client for validation
-        self.client = ChatCompletionsClient(
-            endpoint=settings.azure_ai_foundry_endpoint,
-            credential=settings.azure_credential,
-            credential_scopes=["https://cognitiveservices.azure.com/.default"],
+        # Create async token provider for Azure AD authentication
+        async def get_azure_ad_token() -> str:
+            """Get Azure AD token for OpenAI API authentication."""
+            token = settings.azure_credential.get_token(
+                "https://cognitiveservices.azure.com/.default"
+            )
+            return token.token
+        
+        # Get validation model name
+        validation_model = settings.validation_model or "gpt-4o-mini"
+        
+        # Create AsyncAzureOpenAI client with token provider
+        azure_client = AsyncAzureOpenAI(
+            azure_endpoint=settings.azure_ai_foundry_endpoint,
+            azure_ad_token_provider=get_azure_ad_token,
+            api_version="2024-02-01",  # Azure OpenAI API version
+        )
+        
+        # Create chat client for validation using Agent Framework OpenAI client
+        self.client = OpenAIChatClient(
+            model_id=validation_model,
+            async_client=azure_client,
         )
         
         # Use validation prompt if configured, otherwise use default
@@ -226,10 +244,10 @@ class Validator:
         
         log.info(
             "Validator initialized | model=%s",
-            settings.validation_model or "gpt-4o-mini",
+            validation_model,
         )
     
-    def validate(
+    async def validate(
         self,
         document_content: str,
         data_elements: List[Dict[str, Any]],
@@ -258,20 +276,18 @@ class Validator:
                 extracted_data=extracted_data,
             )
             
-            # Call validation model (gpt-4o-mini)
-            model = self.settings.validation_model or "gpt-4o-mini"
-            response = self.client.complete(
+            # Call validation model using Agent Framework OpenAI client
+            response = await self.client.get_response(
                 messages=[
-                    SystemMessage("You are a data validation assistant."),
-                    UserMessage(validation_prompt),
+                    ChatMessage("system", text="You are a data validation assistant."),
+                    ChatMessage("user", text=validation_prompt),
                 ],
                 temperature=0.1,  # Low temperature for consistent validation
                 top_p=0.9,
-                model=model,
             )
             
-            # Parse validation response
-            response_text = response.choices[0].message.content
+            # Parse validation response - ChatResponse has a text attribute
+            response_text = response.text or ""
             field_results = self.result_parser.parse(response_text, extracted_data)
             
             # Calculate overall confidence and validate required fields

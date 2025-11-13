@@ -6,7 +6,7 @@
     "useManagedIdentity": true
   },
   "azureAIFoundry": {
-    "projectEndpoint": "https://npaifoundry.cognitiveservices.azure.com/openai/deployments/gpt-4o",
+    "projectEndpoint": "https://npaifoundry.cognitiveservices.azure.com/",
     "extractionModel": "gpt-4o",
     "validationModel": "gpt-4o-mini"
   },

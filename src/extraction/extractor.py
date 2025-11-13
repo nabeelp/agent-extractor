@@ -6,15 +6,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from azure.ai.formrecognizer import DocumentAnalysisClient
-from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import (
-    ImageContentItem,
-    ImageUrl,
-    SystemMessage,
-    TextContentItem,
-    UserMessage,
-)
 from azure.core.credentials import AzureKeyCredential
+from openai import AsyncAzureOpenAI
+from agent_framework.openai import OpenAIChatClient
+from agent_framework._types import ChatMessage, DataContent, TextContent
 
 from ..config.settings import Settings
 from ..exceptions import (
@@ -35,7 +30,7 @@ log = logging.getLogger(__name__)
 class ExtractionHelpers:
     """Bundle helper components for the extraction workflow."""
 
-    chat_client: ChatCompletionsClient
+    chat_client: OpenAIChatClient
     document_intelligence_client: Optional[DocumentAnalysisClient]
     prompt_template: str
 
@@ -46,11 +41,31 @@ class ChatClientFactory:
     def __init__(self, settings: Settings):
         self._settings = settings
 
-    def create(self) -> ChatCompletionsClient:
-        return ChatCompletionsClient(
-            endpoint=self._settings.azure_ai_foundry_endpoint,
-            credential=self._settings.azure_credential,
-            credential_scopes=["https://cognitiveservices.azure.com/.default"],
+    def create(self) -> OpenAIChatClient:
+        """Create OpenAIChatClient with Azure AD authentication.
+        
+        Returns:
+            OpenAIChatClient configured for Azure AI Foundry
+        """
+        # Create async token provider for Azure AD authentication
+        async def get_azure_ad_token() -> str:
+            """Get Azure AD token for OpenAI API authentication."""
+            token = self._settings.azure_credential.get_token(
+                "https://cognitiveservices.azure.com/.default"
+            )
+            return token.token
+        
+        # Create AsyncAzureOpenAI client with token provider
+        azure_client = AsyncAzureOpenAI(
+            azure_endpoint=self._settings.azure_ai_foundry_endpoint,
+            azure_ad_token_provider=get_azure_ad_token,
+            api_version="2024-02-01",  # Azure OpenAI API version
+        )
+        
+        # Create OpenAIChatClient with the Azure client
+        return OpenAIChatClient(
+            model_id=self._settings.extraction_model,
+            async_client=azure_client,
         )
 
 
@@ -147,7 +162,7 @@ class Extractor:
         self.prompt_builder = PromptBuilder(helpers.prompt_template)
         self.result_parser = ExtractionResultParser()
 
-    def extract_from_text(
+    async def extract_from_text(
         self,
         text: str,
         data_elements: List[Dict[str, Any]],
@@ -169,19 +184,18 @@ class Extractor:
             system_prompt = self.prompt_builder.build(data_elements)
             user_prompt = f"Document text:\n\n{text}\n\nExtract the requested data elements."
             
-            # Call LLM for extraction
-            response = self.client.complete(
+            # Call LLM for extraction using Agent Framework OpenAI client
+            response = await self.client.get_response(
                 messages=[
-                    SystemMessage(system_prompt),
-                    UserMessage(user_prompt)
+                    ChatMessage("system", text=system_prompt),
+                    ChatMessage("user", text=user_prompt)
                 ],
                 temperature=0.1,  # Low temperature for consistent extraction
                 top_p=0.9,
-                model=self.settings.extraction_model
             )
             
-            # Parse response
-            result_text = response.choices[0].message.content
+            # Parse response - ChatResponse has a text attribute
+            result_text = response.text or ""
             extracted_data = self.result_parser.parse(result_text)
             
             return extracted_data
@@ -192,7 +206,7 @@ class Extractor:
             log.exception("Text extraction failed")
             raise TextExtractionError(f"Text extraction failed: {exc}") from exc
     
-    def extract_from_image(
+    async def extract_from_image(
         self,
         image_data: Dict[str, Any],
         data_elements: List[Dict[str, Any]],
@@ -226,24 +240,25 @@ class Extractor:
             else:
                 prompt_text = "Extract the requested data elements from this image:"
             
-            user_message_content = [
-                TextContentItem(text=prompt_text),
-                ImageContentItem(image_url=ImageUrl(url=image_url))
-            ]
-            
-            # Call vision-capable LLM
-            response = self.client.complete(
+            # Call vision-capable LLM using Agent Framework OpenAI client
+            # Use ChatMessage with contents array for multimodal input
+            response = await self.client.get_response(
                 messages=[
-                    SystemMessage(system_prompt),
-                    UserMessage(content=user_message_content)
+                    ChatMessage("system", text=system_prompt),
+                    ChatMessage(
+                        "user",
+                        contents=[
+                            TextContent(text=prompt_text),
+                            DataContent(uri=image_url, media_type=media_type)
+                        ]
+                    )
                 ],
                 temperature=0.1,
                 top_p=0.9,
-                model=self.settings.extraction_model
             )
             
-            # Parse response
-            result_text = response.choices[0].message.content
+            # Parse response - ChatResponse has a text attribute
+            result_text = response.text or ""
             extracted_data = self.result_parser.parse(result_text)
             
             return extracted_data
@@ -254,7 +269,7 @@ class Extractor:
             log.exception("Vision extraction failed")
             raise VisionExtractionError(f"Vision extraction failed: {exc}") from exc
     
-    def extract_with_document_intelligence(
+    async def extract_with_document_intelligence(
         self,
         document_base64: str,
         data_elements: List[Dict[str, Any]],
@@ -306,7 +321,7 @@ class Extractor:
             full_text = "\n\n".join(text_content)
             
             # Use LLM for structured extraction from OCR text
-            return self.extract_from_text(full_text, data_elements)
+            return await self.extract_from_text(full_text, data_elements)
             
         except DocumentIntelligenceNotConfiguredError:
             raise
@@ -322,7 +337,7 @@ class Extractor:
                 f"Document Intelligence extraction failed: {exc}"
             ) from exc
     
-    def extract(
+    async def extract(
         self,
         text: Optional[str],
         data_elements: List[Dict[str, Any]],
@@ -348,14 +363,14 @@ class Extractor:
         try:
             # Route to appropriate extraction method
             if use_document_intelligence and document_base64:
-                extracted_data = self.extract_with_document_intelligence(
+                extracted_data = await self.extract_with_document_intelligence(
                     document_base64,
                     data_elements,
                 )
             elif image_data:
-                extracted_data = self.extract_from_image(image_data, data_elements)
+                extracted_data = await self.extract_from_image(image_data, data_elements)
             elif text:
-                extracted_data = self.extract_from_text(text, data_elements)
+                extracted_data = await self.extract_from_text(text, data_elements)
             else:
                 raise ExtractionError("No valid input provided for extraction")
             
