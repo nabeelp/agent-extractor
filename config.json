@@ -12,9 +12,9 @@
   },
   "routingThresholds": {
     "useDocumentIntelligence": {
-      "scannedDocument": false,
-      "lowTextDensity": false,
-      "poorImageQuality": false
+      "scannedDocument": true,
+      "lowTextDensity": true,
+      "poorImageQuality": true
     },
     "textDensityThreshold": 100,
     "lowResolutionThreshold": 500000

@@ -6,6 +6,7 @@ environment variable overrides, and Azure credential management.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, ClassVar, Dict, Optional
 
@@ -295,6 +296,82 @@ class Settings(BaseSettings):
             return json.load(config_file)
 
     @classmethod
+    def _env_override_settings_source(
+        cls,
+        _: Optional[BaseSettings] = None,
+    ) -> Dict[str, Any]:
+        """Custom environment variable source that handles nested config overrides."""
+        env_config = {}
+        
+        # Azure Document Intelligence overrides
+        di_endpoint = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
+        di_key = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
+        di_use_mi = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_USE_MANAGED_IDENTITY")
+        
+        if any([di_endpoint, di_key, di_use_mi]):
+            env_config["azureDocumentIntelligence"] = {}
+            if di_endpoint:
+                env_config["azureDocumentIntelligence"]["endpoint"] = di_endpoint
+            if di_key:
+                env_config["azureDocumentIntelligence"]["key"] = di_key
+            if di_use_mi:
+                env_config["azureDocumentIntelligence"]["useManagedIdentity"] = di_use_mi.lower() in ("true", "1", "yes")
+        
+        # Azure AI Foundry overrides
+        foundry_endpoint = os.getenv("AZURE_AI_FOUNDRY_ENDPOINT")
+        extraction_model = os.getenv("AZURE_EXTRACTION_MODEL")
+        validation_model = os.getenv("AZURE_VALIDATION_MODEL")
+        use_mi = os.getenv("AZURE_USE_MANAGED_IDENTITY")
+        
+        if any([foundry_endpoint, extraction_model, validation_model, use_mi]):
+            env_config["azureAIFoundry"] = {}
+            if foundry_endpoint:
+                env_config["azureAIFoundry"]["projectEndpoint"] = foundry_endpoint
+            if extraction_model:
+                env_config["azureAIFoundry"]["extractionModel"] = extraction_model
+            if validation_model:
+                env_config["azureAIFoundry"]["validationModel"] = validation_model
+            if use_mi:
+                env_config["azureAIFoundry"]["useManagedIdentity"] = use_mi.lower() in ("true", "1", "yes")
+        
+        # Server ports overrides
+        mcp_port = os.getenv("MCP_SERVER_PORT")
+        a2a_port = os.getenv("A2A_SERVER_PORT")
+        
+        if any([mcp_port, a2a_port]):
+            env_config["serverPorts"] = {}
+            if mcp_port:
+                env_config["serverPorts"]["mcp"] = int(mcp_port)
+            if a2a_port:
+                env_config["serverPorts"]["a2a"] = int(a2a_port)
+        
+        # Top-level overrides
+        min_confidence = os.getenv("MIN_CONFIDENCE_THRESHOLD")
+        if min_confidence:
+            env_config["minConfidenceThreshold"] = float(min_confidence)
+        
+        max_buffer = os.getenv("MAX_BUFFER_SIZE_MB")
+        if max_buffer:
+            env_config["maxBufferSizeMB"] = int(max_buffer)
+        
+        tenant_id = os.getenv("AZURE_TENANT_ID")
+        if tenant_id:
+            env_config["azureTenantId"] = tenant_id
+        
+        # Prompts overrides
+        extraction_prompt = os.getenv("EXTRACTION_PROMPT")
+        validation_prompt = os.getenv("VALIDATION_PROMPT")
+        
+        if any([extraction_prompt, validation_prompt]):
+            env_config["prompts"] = {}
+            if extraction_prompt:
+                env_config["prompts"]["extraction"] = extraction_prompt
+            if validation_prompt:
+                env_config["prompts"]["validation"] = validation_prompt
+        
+        return env_config
+
+    @classmethod
     def settings_customise_sources(
         cls,
         settings_cls,
@@ -303,11 +380,15 @@ class Settings(BaseSettings):
         dotenv_settings,
         file_secret_settings,
     ):
+        # Priority order (highest to lowest):
+        # 1. Environment variables (custom env override source)
+        # 2. Constructor arguments (init_settings)
+        # 3. config.json file (JSON config)
+        # 4. File secrets (file_secret_settings)
         return (
-            env_settings,
-            dotenv_settings,
-            cls._json_config_settings_source,
+            cls._env_override_settings_source,
             init_settings,
+            cls._json_config_settings_source,
             file_secret_settings,
         )
 
