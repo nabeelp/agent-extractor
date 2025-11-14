@@ -72,6 +72,10 @@ uv sync
 # Install server extras (FastAPI/uvicorn) if you plan to run the MCP server
 uv pip install -e ".[server]"
 
+# Install pre-commit hooks for lint/type/test gates
+uv pip install pre-commit
+pre-commit install
+
 # Install Agent Framework with --pre flag
 uv pip install agent-framework-azure-ai --pre
 ```
@@ -318,6 +322,23 @@ agent-extractor/
 
 ## Development
 
+### Pre-commit Hooks
+
+```bash
+# Install the hook runner once
+uv pip install pre-commit
+
+# Register hooks (ruff, mypy, pytest) for this repo
+pre-commit install
+
+# Optional: run across the entire tree
+pre-commit run --all-files
+```
+
+> **Why it matters:** the hooks wrap `ruff`, `mypy`, and
+> `uv run pytest --maxfail=1`, catching style, type, and async
+> orchestration regressions before they land in CI.
+
 ### Running Tests
 
 ```bash
@@ -329,6 +350,9 @@ uv run pytest
 
 # Run with coverage
 uv run pytest --cov=src
+
+# Focus on the async orchestrator workflow
+uv run pytest tests/test_orchestrator_async.py -v
 ```
 
 ### Code Formatting
