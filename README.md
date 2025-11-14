@@ -195,9 +195,21 @@ Invoke-RestMethod -Uri http://localhost:8000/extract_document_data `
 {
   "success": false,
   "extractedData": {},
-  "errors": ["Required field 'invoiceNumber' not found in document"]
+  "errors": ["Required field 'invoiceNumber' not found in document"],
+  "metadata": {
+    "extraction_method": "llm_text",
+    "routing_reasoning": "Digital PDF with extractable text",
+    "document_type": "pdf"
+  }
 }
 ```
+
+### Error Responses
+
+When the server returns an HTTP error (4xx/5xx), the response body now includes a
+`metadata` object containing routing and extraction context whenever it is
+available. This matches the metadata provided in successful responses and helps
+diagnose failures without digging through server logs.
 
 ## Configuration
 

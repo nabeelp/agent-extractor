@@ -54,7 +54,7 @@ class ExtractDocumentResponse(BaseModel):
 log = logging.getLogger(__name__)
 
 
-def map_exception_to_http_error(exc: Exception) -> HTTPException:
+def map_exception_to_http_error(exc: Exception, metadata: Optional[Dict[str, Any]] = None) -> HTTPException:
     """Map domain exceptions to HTTP errors with appropriate status codes.
     
     This centralizes error handling logic and ensures consistent error responses
@@ -62,15 +62,23 @@ def map_exception_to_http_error(exc: Exception) -> HTTPException:
     
     Args:
         exc: The exception to map
+        metadata: Optional metadata to include in the error response
         
     Returns:
         HTTPException with appropriate status code and detail message
     """
+    combined_metadata: Optional[Dict[str, Any]] = metadata or getattr(exc, "details", None)
+
+    def _http_exception(status_code: int, detail: Dict[str, Any]) -> HTTPException:
+        if combined_metadata:
+            detail.setdefault("metadata", combined_metadata)
+        return HTTPException(status_code=status_code, detail=detail)
+
     # Client errors (4xx)
     if isinstance(exc, UnsupportedFileTypeError):
-        return HTTPException(
-            status_code=400,
-            detail={
+        return _http_exception(
+            400,
+            {
                 "error": "unsupported_file_type",
                 "message": str(exc),
                 "file_type": exc.file_type,
@@ -79,27 +87,27 @@ def map_exception_to_http_error(exc: Exception) -> HTTPException:
         )
     
     if isinstance(exc, Base64DecodingError):
-        return HTTPException(
-            status_code=400,
-            detail={
+        return _http_exception(
+            400,
+            {
                 "error": "invalid_base64",
                 "message": str(exc),
             },
         )
     
     if isinstance(exc, DocumentParsingError):
-        return HTTPException(
-            status_code=400,
-            detail={
+        return _http_exception(
+            400,
+            {
                 "error": "document_parsing_failed",
                 "message": str(exc),
             },
         )
     
     if isinstance(exc, RequiredFieldMissingError):
-        return HTTPException(
-            status_code=422,
-            detail={
+        return _http_exception(
+            422,
+            {
                 "error": "required_field_missing",
                 "message": str(exc),
                 "field_name": exc.field_name,
@@ -108,18 +116,18 @@ def map_exception_to_http_error(exc: Exception) -> HTTPException:
         )
     
     if isinstance(exc, InvalidExtractionResultError):
-        return HTTPException(
-            status_code=422,
-            detail={
+        return _http_exception(
+            422,
+            {
                 "error": "invalid_extraction_result",
                 "message": str(exc),
             },
         )
     
     if isinstance(exc, DocumentRoutingError):
-        return HTTPException(
-            status_code=400,
-            detail={
+        return _http_exception(
+            400,
+            {
                 "error": "document_routing_failed",
                 "message": str(exc),
             },
@@ -127,36 +135,36 @@ def map_exception_to_http_error(exc: Exception) -> HTTPException:
     
     # Server errors (5xx)
     if isinstance(exc, ConfigurationError):
-        return HTTPException(
-            status_code=500,
-            detail={
+        return _http_exception(
+            500,
+            {
                 "error": "configuration_error",
                 "message": str(exc),
             },
         )
     
     if isinstance(exc, DocumentIntelligenceNotConfiguredError):
-        return HTTPException(
-            status_code=503,
-            detail={
+        return _http_exception(
+            503,
+            {
                 "error": "document_intelligence_not_configured",
                 "message": str(exc),
             },
         )
     
     if isinstance(exc, DocumentIntelligenceError):
-        return HTTPException(
-            status_code=502,
-            detail={
+        return _http_exception(
+            502,
+            {
                 "error": "document_intelligence_failed",
                 "message": str(exc),
             },
         )
     
     if isinstance(exc, ExtractionError):
-        return HTTPException(
-            status_code=500,
-            detail={
+        return _http_exception(
+            500,
+            {
                 "error": "extraction_failed",
                 "message": str(exc),
             },
@@ -164,9 +172,9 @@ def map_exception_to_http_error(exc: Exception) -> HTTPException:
     
     # Generic document extraction errors
     if isinstance(exc, DocumentExtractionError):
-        return HTTPException(
-            status_code=500,
-            detail={
+        return _http_exception(
+            500,
+            {
                 "error": "document_extraction_error",
                 "message": str(exc),
             },
@@ -174,9 +182,9 @@ def map_exception_to_http_error(exc: Exception) -> HTTPException:
     
     # Unknown errors (500)
     log.exception("Unexpected error: %s", exc)
-    return HTTPException(
-        status_code=500,
-        detail={
+    return _http_exception(
+        500,
+        {
             "error": "internal_server_error",
             "message": "An unexpected error occurred",
         },
