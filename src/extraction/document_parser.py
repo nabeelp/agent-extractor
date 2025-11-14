@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from docx import Document
 from PIL import Image
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 from ..exceptions import (
     Base64DecodingError,

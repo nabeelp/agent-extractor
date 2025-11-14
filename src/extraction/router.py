@@ -7,7 +7,7 @@ from io import BytesIO
 from typing import Any, Dict
 
 from PIL import Image
-from PyPDF2 import PdfReader
+from pypdf import PdfReader
 
 from ..exceptions import DocumentRoutingError, UnsupportedFileTypeError
 from .document_parser import DocumentContext

@@ -20,7 +20,7 @@ dependencies = [
     "agent-framework-azure-ai==1.0.0b251105",
     "azure-ai-formrecognizer>=3.3.0",
     "azure-identity>=1.15.0",
-    "PyPDF2>=3.0.0",
+    "pypdf>=4.0.0",
     "python-docx>=1.1.0",
     "Pillow>=10.0.0",
     "python-dotenv>=1.0.0",
