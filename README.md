@@ -69,6 +69,9 @@ pip install uv
 # Sync dependencies (creates venv automatically)
 uv sync
 
+# Install server extras (FastAPI/uvicorn) if you plan to run the MCP server
+uv pip install -e ".[server]"
+
 # Install Agent Framework with --pre flag
 uv pip install agent-framework-azure-ai --pre
 ```
@@ -353,6 +356,10 @@ docker build -t agent-extractor:latest .
 docker run -p 8000:8000 -p 8001:8001 \
   --env-file .env \
   agent-extractor:latest
+
+> **Note:** The FastAPI/uvicorn stack now lives in the optional `server` extra. Make
+> sure you install with `pip install -e .[server]` (or `uv pip install -e .[server]`)
+> before running `python src/main.py` locally.
 ```
 
 ### Azure Container Apps
