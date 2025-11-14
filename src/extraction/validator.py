@@ -267,6 +267,16 @@ class Validator:
             ValidationError: If validation process fails
         """
         try:
+            if not data_elements:
+                error_msg = "Validation requires at least one data element"
+                log.warning(error_msg)
+                return ValidationResult(
+                    success=False,
+                    field_results={},
+                    overall_confidence=0.0,
+                    errors=[error_msg],
+                )
+
             log.info("Starting validation for %s fields", len(extracted_data))
             
             # Build validation prompt
@@ -319,6 +329,9 @@ class Validator:
                         errors.append(f"Required field '{field_name}' failed validation")
             
             # Calculate overall confidence (average of all fields)
+            if not confidence_scores:
+                errors.append("Validation produced no confidence scores")
+
             overall_confidence = sum(confidence_scores) / len(confidence_scores) if confidence_scores else 0.0
             
             success = len(errors) == 0

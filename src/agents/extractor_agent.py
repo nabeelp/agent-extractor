@@ -1,10 +1,12 @@
 """Document extraction agent using Microsoft Agent Framework."""
 
 import base64
+import binascii
 import logging
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, ClassVar, Dict, List, Optional
 
 from ..config.settings import Settings
+from ..exceptions import Base64DecodingError, UnsupportedFileTypeError
 from ..extraction.document_parser import DocumentContext, parse_document, parse_image_document
 from ..extraction.extractor import Extractor
 from ..extraction.router import (
@@ -75,6 +77,8 @@ class ExtractorAgent:
     3. Data extraction (LLM-based or Document Intelligence)
     """
     
+    SUPPORTED_FILE_TYPES: ClassVar[set[str]] = {"pdf", "docx", "png", "jpg", "jpeg"}
+
     def __init__(self, settings: Settings):
         """Initialize extractor agent.
         
@@ -107,6 +111,37 @@ class ExtractorAgent:
             self.has_document_intelligence,
         )
     
+    @classmethod
+    def normalize_file_type(cls, file_type: str) -> str:
+        """Normalize and validate the supplied file type string."""
+        if file_type is None:
+            raise UnsupportedFileTypeError("", sorted(cls.SUPPORTED_FILE_TYPES))
+
+        normalized = file_type.strip().lower()
+        if not normalized:
+            raise UnsupportedFileTypeError(normalized, sorted(cls.SUPPORTED_FILE_TYPES))
+
+        if normalized not in cls.SUPPORTED_FILE_TYPES:
+            raise UnsupportedFileTypeError(normalized, sorted(cls.SUPPORTED_FILE_TYPES))
+
+        return normalized
+
+    @staticmethod
+    def decode_document_payload(document_base64: str) -> bytes:
+        """Decode a base64 document payload with validation."""
+        if not document_base64 or not document_base64.strip():
+            raise Base64DecodingError("Document payload is empty")
+
+        try:
+            decoded = base64.b64decode(document_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:  # pragma: no cover - defensive
+            raise Base64DecodingError(f"Invalid base64 document payload: {exc}") from exc
+
+        if not decoded:
+            raise Base64DecodingError("Document payload decoded to zero bytes")
+
+        return decoded
+
     async def extract_from_document(
         self,
         document_base64: str,
@@ -130,20 +165,18 @@ class ExtractorAgent:
             ExtractionResult with extracted data or error
         """
         try:
-            try:
-                document_bytes = base64.b64decode(document_base64)
-            except (base64.binascii.Error, ValueError) as exc:
-                raise ValueError(f"Invalid base64 document payload: {exc}") from exc
+            normalized_type = self.normalize_file_type(file_type)
+            document_bytes = self.decode_document_payload(document_base64)
 
             log.info(
                 "Starting extraction | type=%s | elements=%s",
-                file_type,
+                normalized_type,
                 len(data_elements),
             )
 
             # Step 1: Route document to select extraction method
             doc_context = DocumentContext(
-                file_type=file_type,
+                file_type=normalized_type,
                 base64_data=document_base64,
                 raw_bytes=document_bytes,
             )
@@ -182,6 +215,8 @@ class ExtractorAgent:
                 document_content=document_content,  # Preserve for validation handoff
             )
             
+        except (UnsupportedFileTypeError, Base64DecodingError):
+            raise
         except ValueError as exc:
             log.warning("Extraction failed | error=%s", exc)
             return ExtractionResult(success=False, error=str(exc))
