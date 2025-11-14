@@ -236,6 +236,7 @@ class Validator:
             model_id=validation_model,
             async_client=azure_client,
         )
+        self._async_openai_client = azure_client
         
         # Use validation prompt if configured, otherwise use default
         prompt_template = settings.validation_prompt
@@ -246,6 +247,13 @@ class Validator:
             "Validator initialized | model=%s",
             validation_model,
         )
+
+    async def aclose(self) -> None:
+        """Close the underlying async OpenAI client."""
+        try:
+            await self._async_openai_client.close()
+        except AttributeError:  # pragma: no cover - defensive
+            pass
     
     async def validate(
         self,

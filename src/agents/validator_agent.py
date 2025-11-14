@@ -115,6 +115,9 @@ class ValidatorAgent:
             settings.min_confidence_threshold,
         )
     
+    async def aclose(self) -> None:
+        await self.validator.aclose()
+
     async def validate(
         self,
         validator_input: ValidatorAgentInput,

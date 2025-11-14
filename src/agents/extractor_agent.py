@@ -111,6 +111,10 @@ class ExtractorAgent:
             self.has_document_intelligence,
         )
     
+    async def aclose(self) -> None:
+        """Release underlying extractor resources."""
+        await self.extractor.aclose()
+
     @classmethod
     def normalize_file_type(cls, file_type: str) -> str:
         """Normalize and validate the supplied file type string."""

@@ -111,6 +111,11 @@ class ExtractionOrchestrator:
         
         log.info("Extraction orchestrator initialized with sequential workflow")
     
+    async def aclose(self) -> None:
+        """Close agents/resources managed by the orchestrator."""
+        await self.extractor_agent.aclose()
+        await self.validator_agent.aclose()
+
     async def orchestrate(
         self,
         document_base64: str,

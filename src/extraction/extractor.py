@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from azure.ai.formrecognizer import DocumentAnalysisClient
+from azure.ai.formrecognizer.aio import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
 from openai import AsyncAzureOpenAI
 from agent_framework.openai import OpenAIChatClient
@@ -31,6 +31,7 @@ class ExtractionHelpers:
     """Bundle helper components for the extraction workflow."""
 
     chat_client: OpenAIChatClient
+    async_openai_client: AsyncAzureOpenAI
     document_intelligence_client: Optional[DocumentAnalysisClient]
     prompt_template: str
 
@@ -41,7 +42,7 @@ class ChatClientFactory:
     def __init__(self, settings: Settings):
         self._settings = settings
 
-    def create(self) -> OpenAIChatClient:
+    def create(self) -> tuple[OpenAIChatClient, AsyncAzureOpenAI]:
         """Create OpenAIChatClient with Azure AD authentication.
         
         Returns:
@@ -63,10 +64,12 @@ class ChatClientFactory:
         )
         
         # Create OpenAIChatClient with the Azure client
-        return OpenAIChatClient(
+        chat_client = OpenAIChatClient(
             model_id=self._settings.extraction_model,
             async_client=azure_client,
         )
+
+        return chat_client, azure_client
 
 
 class DocumentIntelligenceFactory:
@@ -140,10 +143,11 @@ class ExtractionResultParser:
 def build_helpers(settings: Settings) -> ExtractionHelpers:
     """Construct helper bundle for the extractor."""
 
-    chat_client = ChatClientFactory(settings).create()
+    chat_client, async_openai_client = ChatClientFactory(settings).create()
     doc_intel_client = DocumentIntelligenceFactory(settings).create()
     return ExtractionHelpers(
         chat_client=chat_client,
+        async_openai_client=async_openai_client,
         document_intelligence_client=doc_intel_client,
         prompt_template=settings.extraction_prompt,
     )
@@ -158,9 +162,20 @@ class Extractor:
         self.settings = settings
         helpers = build_helpers(settings)
         self.client = helpers.chat_client
+        self._async_openai_client = helpers.async_openai_client
         self.doc_intelligence_client = helpers.document_intelligence_client
         self.prompt_builder = PromptBuilder(helpers.prompt_template)
         self.result_parser = ExtractionResultParser()
+
+    async def aclose(self) -> None:
+        """Close any underlying async clients."""
+        try:
+            await self._async_openai_client.close()
+        except AttributeError:  # pragma: no cover - defensive
+            pass
+
+        if self.doc_intelligence_client is not None:
+            await self.doc_intelligence_client.close()
 
     async def extract_from_text(
         self,
@@ -300,11 +315,11 @@ class Extractor:
             document_bytes = base64.b64decode(document_base64)
             
             # Analyze document with Document Intelligence (read model)
-            poller = self.doc_intelligence_client.begin_analyze_document(
+            poller = await self.doc_intelligence_client.begin_analyze_document(
                 "prebuilt-read",
                 document=BytesIO(document_bytes)
             )
-            result = poller.result()
+            result = await poller.result()
             
             # Extract all text content
             text_content = []

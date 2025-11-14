@@ -201,6 +201,13 @@ async def startup_event() -> None:
     )
 
 
+@app.on_event("shutdown")
+async def shutdown_event() -> None:
+    orchestrator = getattr(app.state, "orchestrator", None)
+    if orchestrator is not None:
+        await orchestrator.aclose()
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint.
