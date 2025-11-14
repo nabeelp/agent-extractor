@@ -126,4 +126,3 @@ async def test_orchestrator_validation_failure(monkeypatch, settings):
     assert result.success is False
     assert result.errors == ["below threshold"]
     assert result.overall_confidence == 0.4
-*** End Patch

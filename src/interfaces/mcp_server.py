@@ -1,6 +1,7 @@
 """MCP (Model Context Protocol) HTTP server for document extraction."""
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -192,14 +193,11 @@ def map_exception_to_http_error(exc: Exception, metadata: Optional[Dict[str, Any
 
 
 # Create FastAPI app
-app = FastAPI(
-    title="Agent Extractor MCP Server",
-    description="Document extraction agent with MCP (Model Context Protocol) interface",
-    version="0.1.0"
-)
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Initialise shared settings and orchestrator instance."""
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Handle startup and shutdown using FastAPI lifespan hooks."""
     settings = get_settings()
     app.state.settings = settings
     app.state.orchestrator = create_orchestrator(settings)
@@ -207,13 +205,20 @@ async def startup_event() -> None:
         "MCP server initialised with orchestrator | port=%s",
         settings.mcp_server_port,
     )
+    try:
+        yield
+    finally:
+        orchestrator = getattr(app.state, "orchestrator", None)
+        if orchestrator is not None:
+            await orchestrator.aclose()
 
 
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    orchestrator = getattr(app.state, "orchestrator", None)
-    if orchestrator is not None:
-        await orchestrator.aclose()
+app = FastAPI(
+    title="Agent Extractor MCP Server",
+    description="Document extraction agent with MCP (Model Context Protocol) interface",
+    version="0.1.0",
+    lifespan=_lifespan,
+)
 
 
 @app.get("/health")
