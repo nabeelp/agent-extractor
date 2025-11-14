@@ -3,12 +3,12 @@
 import base64
 import binascii
 import logging
-from typing import Any, Callable, ClassVar, Dict, List, Optional
+from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Optional
 
 from ..config.settings import Settings
 from ..exceptions import Base64DecodingError, UnsupportedFileTypeError
 from ..extraction.document_parser import DocumentContext, parse_document, parse_image_document
-from ..extraction.extractor import Extractor
+from ..extraction.extractor import Extractor, ExtractionPayload
 from ..extraction.router import (
     DocumentRouter,
     ExtractionMethod,
@@ -19,7 +19,7 @@ from ..extraction.router import (
 log = logging.getLogger(__name__)
 
 
-StrategyFn = Callable[[DocumentContext, List[Dict[str, Any]], Dict[str, Any]], Dict[str, Any]]
+StrategyFn = Callable[[DocumentContext, List[Dict[str, Any]], Dict[str, Any]], Awaitable[ExtractionPayload]]
 
 
 class ExtractionResult:
@@ -198,7 +198,7 @@ class ExtractorAgent:
             )
             
             # Step 2 & 3: Parse and extract based on selected method
-            extracted_data, document_content = await self._execute_extraction(
+            payload = await self._execute_extraction(
                 doc_context,
                 method,
                 data_elements,
@@ -209,14 +209,14 @@ class ExtractorAgent:
             log.info("Extraction completed successfully")
             return ExtractionResult(
                 success=True,
-                data=extracted_data,
+                data=payload.data,
                 metadata={
                     "extraction_method": method.value,
                     "document_type": doc_type.value,
                     "routing_reasoning": reasoning,
                     **doc_metadata
                 },
-                document_content=document_content,  # Preserve for validation handoff
+                document_content=payload.document_content,
             )
             
         except (UnsupportedFileTypeError, Base64DecodingError):
@@ -235,44 +235,26 @@ class ExtractorAgent:
         method: ExtractionMethod,
         data_elements: List[Dict[str, Any]],
         doc_metadata: Dict[str, Any],
-    ) -> tuple[Dict[str, Any], Optional[str]]:
-        """Execute extraction using the selected method.
-        
-        Args:
-            context: Shared document context
-            method: Selected extraction method
-            data_elements: Data elements to extract
-            doc_metadata: Document metadata from routing
-            
-        Returns:
-            Tuple of (extracted_data, document_content) for validation handoff
-            
-        Raises:
-            ValueError: If extraction fails
-        """
+    ) -> ExtractionPayload:
+        """Execute extraction using the selected method."""
         # Lookup the handler for the chosen method. This keeps branching logic out of the
         # main workflow and makes it easy to plug in new strategies later.
         strategy = self._strategies.get(method)
         if strategy is None:
             raise ValueError(f"Unsupported extraction method: {method}")
 
-        extracted_data = await strategy(
+        return await strategy(
             context,
             data_elements,
             doc_metadata,
         )
-        
-        # Get document content for validation (if available)
-        document_content = self._get_document_content(context, method)
-        
-        return extracted_data, document_content
 
     async def _extract_with_text(
         self,
         context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         # Decode text-first documents and run the text-only extraction pipeline.
         text = parse_document(context, all_pages=True)
         log.debug("Parsed text document | chars=%s", len(text))
@@ -287,7 +269,7 @@ class ExtractorAgent:
         context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         # Prepare image or PDF content for the vision-capable model before extraction.
         if context.file_type == "pdf":
             document_data = {
@@ -314,7 +296,7 @@ class ExtractorAgent:
         context: DocumentContext,
         data_elements: List[Dict[str, Any]],
         _metadata: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         # Hand off to the Document Intelligence + LLM flow when OCR preprocessing is needed.
         return await self.extractor.extract(
             text=None,
@@ -322,34 +304,6 @@ class ExtractorAgent:
             document_base64=context.base64_data,
             use_document_intelligence=True,
         )
-    
-    def _get_document_content(
-        self,
-        context: DocumentContext,
-        method: ExtractionMethod,
-    ) -> Optional[str]:
-        """Get document content for validation handoff.
-        
-        Args:
-            context: Document context
-            method: Extraction method used
-            
-        Returns:
-            Document text content if available, None otherwise
-        """
-        try:
-            # For text-based methods, parse and return the content
-            if method in [ExtractionMethod.LLM_TEXT, ExtractionMethod.DOCUMENT_INTELLIGENCE]:
-                if context.file_type in ["pdf", "docx"]:
-                    return parse_document(context, all_pages=True)
-            
-            # For vision methods with images, return a placeholder
-            # (validator will use the original document if needed)
-            return None
-            
-        except Exception as exc:
-            log.warning("Failed to get document content for handoff: %s", exc)
-            return None
 
 
 def create_extractor_agent(settings: Settings) -> ExtractorAgent:

@@ -36,6 +36,14 @@ class ExtractionHelpers:
     prompt_template: str
 
 
+@dataclass
+class ExtractionPayload:
+    """Structured extraction output with optional document content."""
+
+    data: Dict[str, Any]
+    document_content: Optional[str]
+
+
 class ChatClientFactory:
     """Create Azure AI chat clients with consistent configuration."""
 
@@ -181,7 +189,7 @@ class Extractor:
         self,
         text: str,
         data_elements: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         """Extract data elements from document text using text-based LLM.
         
         Args:
@@ -213,7 +221,7 @@ class Extractor:
             result_text = response.text or ""
             extracted_data = self.result_parser.parse(result_text)
             
-            return extracted_data
+            return ExtractionPayload(data=extracted_data, document_content=text)
             
         except InvalidExtractionResultError:
             raise
@@ -225,7 +233,7 @@ class Extractor:
         self,
         image_data: Dict[str, Any],
         data_elements: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         """Extract data elements from image or PDF using vision-capable LLM.
         
         Args:
@@ -275,8 +283,15 @@ class Extractor:
             # Parse response - ChatResponse has a text attribute
             result_text = response.text or ""
             extracted_data = self.result_parser.parse(result_text)
+
+            doc_descriptor = (
+                f"[Vision document] media={media_type} "
+                f"type={image_data.get('document_type', image_data.get('format', 'unknown'))} "
+                f"width={image_data.get('width', 'n/a')} "
+                f"height={image_data.get('height', 'n/a')}"
+            )
             
-            return extracted_data
+            return ExtractionPayload(data=extracted_data, document_content=doc_descriptor)
             
         except InvalidExtractionResultError:
             raise
@@ -288,7 +303,7 @@ class Extractor:
         self,
         document_base64: str,
         data_elements: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         """Extract data using Azure Document Intelligence for OCR preprocessing.
         
         Args:
@@ -336,7 +351,8 @@ class Extractor:
             full_text = "\n\n".join(text_content)
             
             # Use LLM for structured extraction from OCR text
-            return await self.extract_from_text(full_text, data_elements)
+            extraction_payload = await self.extract_from_text(full_text, data_elements)
+            return extraction_payload
             
         except DocumentIntelligenceNotConfiguredError:
             raise
@@ -359,7 +375,7 @@ class Extractor:
         image_data: Optional[Dict[str, Any]] = None,
         document_base64: Optional[str] = None,
         use_document_intelligence: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> ExtractionPayload:
         """Extract data elements using appropriate method.
         
         Args:
@@ -378,14 +394,14 @@ class Extractor:
         try:
             # Route to appropriate extraction method
             if use_document_intelligence and document_base64:
-                extracted_data = await self.extract_with_document_intelligence(
+                payload = await self.extract_with_document_intelligence(
                     document_base64,
                     data_elements,
                 )
             elif image_data:
-                extracted_data = await self.extract_from_image(image_data, data_elements)
+                payload = await self.extract_from_image(image_data, data_elements)
             elif text:
-                extracted_data = await self.extract_from_text(text, data_elements)
+                payload = await self.extract_from_text(text, data_elements)
             else:
                 raise ExtractionError("No valid input provided for extraction")
             
@@ -393,11 +409,11 @@ class Extractor:
             for element in data_elements:
                 if element.get('required', False):
                     field_name = element['name']
-                    if field_name not in extracted_data or extracted_data[field_name] is None:
+                    if field_name not in payload.data or payload.data[field_name] is None:
                         field_description = element.get('description')
                         raise RequiredFieldMissingError(field_name, field_description)
             
-            return extracted_data
+            return payload
             
         except (DocumentIntelligenceNotConfiguredError, DocumentIntelligenceError,
                 TextExtractionError, VisionExtractionError, InvalidExtractionResultError,
