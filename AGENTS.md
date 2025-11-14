@@ -18,7 +18,7 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
 - Better suited for complex agent systems vs. GitHub models (recommended for simple/getting-started scenarios)
 
 ### Model Selection
-- **gpt-4o**: Primary extraction model with vision capabilities for multimodal document processing (images, scanned PDFs)
+- **gpt-4o**: Primary extraction model with vision capabilities for multimodal document processing of native documents and image files (scanned PDFs are routed through Azure Document Intelligence)
 - **gpt-4o-mini**: Lightweight validation model for cost-effective confidence scoring and field verification
 - Both models deployed via Azure AI Foundry for production reliability
 
@@ -88,7 +88,7 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
 - **config.json**: Default configuration values
   - `minConfidenceThreshold`: Minimum confidence score for required fields (default: 0.8)
   - `maxBufferSizeMB`: Maximum document buffer size in MB (default: 10)
-  - `azureDocumentIntelligence`: Endpoint and key (or use managed identity)
+  - `azureDocumentIntelligence`: Endpoint and key (or use managed identity). **Required for scanned PDFs; requests fail fast if missing.**
   - `azureAIFoundry`: Project endpoint, connection string, and model deployment names (gpt-4o, gpt-4o-mini)
   - `routingThresholds`: Criteria for choosing extraction method
   - `serverPorts`: MCP server (8000), A2A server (8001)
@@ -105,6 +105,7 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
 - Analyze document type (PDF, DOCX, PNG, JPG)
 - Assess document complexity (scanned vs. digital, text density, image quality)
 - Route to appropriate extraction method based on configured thresholds
+- **Scanned PDFs must always route to Azure Document Intelligence; raise a routing error when DI is unavailable instead of falling back to vision models.**
 - Return extraction strategy with reasoning
 - Reference: Search `microsoft/agent-framework` GitHub for condition/switch-case workflow patterns
 
@@ -117,8 +118,8 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
 - Validate buffer size against configured limits
 
 #### src/extraction/extractor.py
-- **LLM-based extraction**: Use Azure AI Foundry gpt-4o with vision capabilities for multimodal processing
-- **Azure Document Intelligence**: OCR preprocessing for complex/scanned documents
+- **LLM-based extraction**: Use Azure AI Foundry gpt-4o for text-first documents and its vision capabilities for PNG/JPG image inputs
+- **Azure Document Intelligence**: Mandatory OCR preprocessing path for scanned PDFs before handing results back to the LLM
 - Parse extraction results into structured JSON matching data element schemas
 - Handle pagination and content aggregation across all pages
 - Error handling and retry logic with exponential backoff
@@ -262,7 +263,6 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
   },
   "routingThresholds": {
     "useDocumentIntelligence": {
-      "scannedDocument": true,
       "lowTextDensity": true,
       "poorImageQuality": true
     }

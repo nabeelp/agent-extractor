@@ -48,9 +48,8 @@ class DocumentRouter:
         use_document_intelligence: bool = False,
         text_density_threshold: int = 100,
         low_resolution_threshold: int = 500000,
-        use_di_for_scanned: bool = True,
         use_di_for_low_text: bool = True,
-        use_di_for_poor_quality: bool = True
+        use_di_for_poor_quality: bool = True,
     ):
         """Initialize document router.
         
@@ -58,14 +57,12 @@ class DocumentRouter:
             use_document_intelligence: Whether Azure Document Intelligence is available
             text_density_threshold: Minimum chars/page for text-based extraction
             low_resolution_threshold: Pixel count threshold for low resolution
-            use_di_for_scanned: Use Document Intelligence for scanned documents
             use_di_for_low_text: Use Document Intelligence for low text density
             use_di_for_poor_quality: Use Document Intelligence for poor image quality
         """
         self.use_document_intelligence = use_document_intelligence
         self.text_density_threshold = text_density_threshold
         self.low_resolution_threshold = low_resolution_threshold
-        self.use_di_for_scanned = use_di_for_scanned
         self.use_di_for_low_text = use_di_for_low_text
         self.use_di_for_poor_quality = use_di_for_poor_quality
     
@@ -284,28 +281,28 @@ class DocumentRouter:
             is_scanned = metadata.get("is_likely_scanned", False)
             text_density = metadata.get("text_density", 0)
             
-            # Determine if Document Intelligence should be used based on configured thresholds
-            should_use_di = False
-            if self.use_document_intelligence:
-                if is_scanned and self.use_di_for_scanned:
-                    should_use_di = True
-                elif text_density < self.text_density_threshold and self.use_di_for_low_text:
-                    should_use_di = True
-            
-            # Route to Document Intelligence if conditions are met
-            if should_use_di:
+            # Scanned PDFs must use Document Intelligence
+            if is_scanned:
+                if not self.use_document_intelligence:
+                    raise DocumentRoutingError(
+                        "Scanned PDF documents require Azure Document Intelligence, but it is not configured."
+                    )
                 return (
                     ExtractionMethod.DOCUMENT_INTELLIGENCE,
-                    f"Scanned/low-text PDF (density: {text_density}, threshold: {self.text_density_threshold}) requires OCR preprocessing"
+                    "Scanned PDF requires Azure Document Intelligence for OCR preprocessing"
                 )
-            
-            # Use LLM with vision for scanned PDFs if no Document Intelligence
-            if is_scanned or text_density < self.text_density_threshold:
+
+            # Low text density PDFs optionally route through Document Intelligence
+            if (
+                self.use_document_intelligence
+                and self.use_di_for_low_text
+                and text_density < self.text_density_threshold
+            ):
                 return (
-                    ExtractionMethod.LLM_VISION,
-                    f"Scanned/low-text PDF (density: {text_density}, threshold: {self.text_density_threshold}) requires vision-capable model"
+                    ExtractionMethod.DOCUMENT_INTELLIGENCE,
+                    f"Low-text PDF (density: {text_density}, threshold: {self.text_density_threshold}) routed to Azure Document Intelligence"
                 )
-            
+
             # Digital PDF with good text extraction
             return (
                 ExtractionMethod.LLM_TEXT,

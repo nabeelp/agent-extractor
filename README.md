@@ -5,7 +5,7 @@ Document extraction agent using Microsoft Agent Framework with MCP and A2A inter
 ## Features
 
 - **Multi-Format Support**: Extract data from PDF, DOCX, PNG, and JPG documents
-- **Intelligent Routing**: Automatically selects optimal extraction method (LLM vision or Azure Document Intelligence)
+- **Intelligent Routing**: Automatically routes digital documents to LLMs, reserves vision models for image inputs, and requires Azure Document Intelligence for scanned PDFs
 - **Dual Interfaces**: 
   - **MCP Server**: HTTP/WebSocket endpoint for AI assistant integration (Claude Desktop, VS Code)
   - **A2A Agent**: Agent-to-agent communication for orchestrated workflows
@@ -250,7 +250,7 @@ See [config.json](config.json) and [AGENTS.md](AGENTS.md) for details.
 1. Check that the PDF contains the data you're looking for
 2. Make the field `required: false` for testing
 3. Improve the field `description` to be more specific
-4. Verify the PDF has extractable text (not a scanned image)
+4. Verify the PDF has extractable text; scanned PDFs now require Azure Document Intelligence configuration
 
 ### "Unsupported file type" error
 
@@ -264,7 +264,7 @@ See [config.json](config.json) and [AGENTS.md](AGENTS.md) for details.
 
 **Solution**:
 1. Verify the PDF is not password-protected
-2. Check if PDF is a scanned image (text extraction won't work - Document Intelligence support coming in Phase 8)
+2. Check if the PDF is a scanned image (these now require Azure Document Intelligence; there is no vision-model fallback)
 3. Try opening the PDF and checking if text is selectable
 4. MVP only supports first page - ensure data is on page 1
 

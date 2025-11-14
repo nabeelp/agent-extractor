@@ -144,12 +144,6 @@ class UseDocumentIntelligenceConfig(BaseModel):
 
     model_config = SettingsConfigDict(populate_by_name=True)
 
-    scanned_document: bool = Field(
-        default=True,
-        alias="scannedDocument",
-        validation_alias=AliasChoices("scannedDocument", "scanned_document"),
-        description="Use Document Intelligence for scanned documents",
-    )
     low_text_density: bool = Field(
         default=True,
         alias="lowTextDensity",

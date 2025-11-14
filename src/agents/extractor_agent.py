@@ -6,7 +6,7 @@ import logging
 from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Optional
 
 from ..config.settings import Settings
-from ..exceptions import Base64DecodingError, UnsupportedFileTypeError
+from ..exceptions import Base64DecodingError, DocumentRoutingError, UnsupportedFileTypeError
 from ..extraction.document_parser import DocumentContext, parse_document, parse_image_document
 from ..extraction.extractor import Extractor, ExtractionPayload
 from ..extraction.router import (
@@ -95,7 +95,6 @@ class ExtractorAgent:
             use_document_intelligence=self.has_document_intelligence,
             text_density_threshold=self.settings.routing_thresholds.text_density_threshold,
             low_resolution_threshold=self.settings.routing_thresholds.low_resolution_threshold,
-            use_di_for_scanned=self.settings.routing_thresholds.use_document_intelligence.scanned_document,
             use_di_for_low_text=self.settings.routing_thresholds.use_document_intelligence.low_text_density,
             use_di_for_poor_quality=self.settings.routing_thresholds.use_document_intelligence.poor_image_quality,
         )
@@ -221,6 +220,9 @@ class ExtractorAgent:
             
         except (UnsupportedFileTypeError, Base64DecodingError):
             raise
+        except DocumentRoutingError as exc:
+            log.warning("Routing failed | error=%s", exc)
+            return ExtractionResult(success=False, error=str(exc))
         except ValueError as exc:
             log.warning("Extraction failed | error=%s", exc)
             return ExtractionResult(success=False, error=str(exc))
