@@ -1,376 +1,63 @@
-# Document Extraction Agent with MCP and Azure Document Intelligence
+# Agent Blueprint: Document Extraction with Confidence
 
-## Overview
+## Mission
+Deliver a Microsoft Agent Framework (Python) solution that ingests a single document plus an explicit list of fields, classifies the document, locks an extraction strategy (LLM, Azure Document Intelligence, or hybrid), extracts each requested field with provenance, and returns both value and confidence per field via MCP and A2A interfaces.
 
-Build a greenfield document extraction agent using Microsoft Agent Framework (Python) that exposes both MCP tools and A2A agent interfaces for extracting structured data from multi-format documents (PDF, DOCX, images). The agent will intelligently route extraction between LLM-based and Azure Document Intelligence methods, then validate results with confidence scoring, deployed as an Azure Container App.
+## Golden Workflow (Immutable Sequence)
+1. **Intake** – Validate the envelope contains `documentBase64` and non-empty `dataElements` (each with name, description, format, required flag). Reject otherwise.
+2. **Classification** – Detect file type (PDF, scanned PDF, DOCX, PNG, JPG, etc.), scan/digital status, and quality flags. Persist this metadata.
+3. **Strategy Lock** – Choose LLM, Azure Document Intelligence, or hybrid based on classification. Record rationale; no silent fallbacks unless a hard failure triggers a logged retry.
+4. **Evidence Extraction** – For every requested field, capture the matching snippet/page/bounding box using the locked strategy.
+5. **Confidence Validation** – Run the validator (gpt-4o-mini via Azure AI Foundry) to assign a 0–1 confidence and reason code per field; enforce minimum thresholds for required fields.
+6. **Response Assembly** – Return a deterministic payload with `documentType`, `extractionStrategy`, `extractedData`, `confidencePerField`, provenance metadata, and any failure diagnostics.
 
-## Technology Choices
+## Non-Negotiable Requirements
+- **Input Contract**: No processing without both payload elements. Log actionable errors.
+- **Document Awareness**: Downstream modules consume the persisted type/quality metadata; reruns reuse it.
+- **Strategy Traceability**: Router decisions surface in logs and responses.
+- **Per-Field Provenance**: Each value references the originating evidence (page, bbox, snippet text).
+- **Confidence Gate**: Required fields below threshold trigger validation failure, not low-quality output.
+- **Deterministic Schema**: Response shape never changes and is shared across MCP + A2A.
+- **Phase Diagnostics**: Failures identify the exact phase (routing, parsing, extraction, validation) plus remediation guidance.
 
-### Why Python?
-- Microsoft Agent Framework officially supports Python and .NET (no TypeScript/Node.js support)
-- Python SDK (`agent-framework-azure-ai`) provides integrated Azure AI Foundry support
-- Rich ecosystem for document processing (PyPDF2, python-docx, Pillow)
+## Component Responsibilities
+### Router (`src/extraction/router.py`)
+- Inspect type, scan status, density, and quality to pick the extraction path.
+- Force scanned PDFs through Azure Document Intelligence; raise routing error if unavailable.
+- Emit immutable decision record (strategy, rationale, timestamps).
 
-### Why Azure AI Foundry?
-- Production-ready for multi-agent orchestration systems
-- Built-in support for workflows and agent coordination patterns
-- Managed identity and enterprise security features
-- Better suited for complex agent systems vs. GitHub models (recommended for simple/getting-started scenarios)
+### Document Parser (`src/extraction/document_parser.py`)
+- Decode base64, enforce buffer limits, and normalize formats (PDF text via `pypdf`, DOCX via `python-docx`, images via Pillow).
+- Validate `dataElements` structure and alignment with document boundaries before passing work downstream.
 
-### Model Selection
-- **gpt-4o**: Primary extraction model with vision capabilities for multimodal document processing of native documents and image files (scanned PDFs are routed through Azure Document Intelligence)
-- **gpt-4o-mini**: Lightweight validation model for cost-effective confidence scoring and field verification
-- Both models deployed via Azure AI Foundry for production reliability
+### Extractor (`src/extraction/extractor.py`)
+- Invoke Azure AI Foundry gpt-4o for text-first or image documents; integrate Document Intelligence output for scanned PDFs prior to LLM reasoning.
+- Produce structured field candidates with provenance metadata per request item.
+- Never emit a field lacking concrete evidence.
 
-## Architecture
+### Validator (`src/extraction/validator.py`)
+- Use gpt-4o-mini to verify each extracted field against source evidence.
+- Assign confidence scores, reasons, and pass/fail status aligned with configured thresholds.
+- Surface remediation notes when confidence is insufficient.
 
-### Dual Interface Pattern
-- **MCP Server**: HTTP/WebSocket endpoint for AI assistant integration (Claude Desktop, VS Code, other MCP clients)
-- **A2A Agent**: Agent-to-agent communication for orchestrated workflows and automation pipelines
+### Agents & Orchestration
+- **Extractor Agent** – Runs router → parser → extractor chain, aggregates multi-page results, enforces provenance.
+- **Validator Agent** – Scores each field, rejects failures, and emits per-field diagnostics.
+- **Orchestrator** – Guarantees the golden workflow executes once per request, with retries only after logged hard failures; passes along metadata to both MCP and A2A layers.
 
-### Multi-Agent Orchestration Pattern
-**Sequential Workflow** with handoff pattern:
-1. Router Agent → analyzes document and selects extraction strategy
-2. Extractor Agent → processes document using selected method
-3. Validator Agent → verifies results and assigns confidence scores
-4. Results aggregated and returned to caller
+## Interface Contracts
+### MCP Tool `extract_document_data`
+- **Input**: `{ documentBase64, fileType, dataElements[] }`.
+- **Output**: `{ success, documentType, extractionStrategy, extractedData, confidencePerField, provenance, errors[] }`.
+- Enforce timeouts, size limits, and structured error responses.
 
-### Core Components
-1. **Extraction Router**: Analyzes document complexity to select optimal extraction method
-2. **Document Parser**: Converts base64 buffers to text/images for processing
-3. **Extractor**: Integrates with Azure AI Foundry models (gpt-4o) and Azure Document Intelligence
-4. **Validator**: Cross-references extracted data and assigns confidence scores using gpt-4o-mini
+### A2A Events
+- `document.extraction.requested` – carries the same envelope as MCP.
+- `document.extraction.completed` – mirrors MCP output schema.
+- `document.extraction.failed` – reports phase + remediation guidance.
 
-## Prerequisites
-
-### Azure AI Foundry Setup
-1. **Azure AI Foundry Project**: Create or use existing project in Azure portal
-2. **Model Deployments**: Deploy gpt-4o and gpt-4o-mini models in your Azure AI Foundry project
-3. **Azure Document Intelligence**: Create Azure Document Intelligence resource
-4. **Entra ID Authentication**: Solution uses Entra ID (Azure AD) authentication via DefaultAzureCredential
-   - For local development: Run `az login` to authenticate
-   - For production: Configure managed identity in Azure Container Apps
-5. **VS Code Extension**: Install Azure AI Foundry extension for resource management
-   - Open Command Palette and run: `workbench.view.extension.azure-ai-foundry`
-
-### Reference Resources
-- **Microsoft Agent Framework GitHub**: https://github.com/microsoft/agent-framework
-  - MCP integration examples
-  - Multi-agent orchestration patterns (sequential, concurrent, handoff)
-  - Multimodal and vision API examples
-  - Workflow patterns (fan-out/fan-in, loops, conditionals)
-
-## Implementation Plan
-
-### Step 1: Initialize Python Project
-- Create `requirements.txt` with dependencies:
-  - **`agent-framework-azure-ai --pre`** (⚠️ **REQUIRED**: `--pre` flag needed during preview)
-  - `@modelcontextprotocol/sdk` for MCP server (or Python MCP library)
-  - `azure-ai-formrecognizer` (Azure Document Intelligence SDK)
-  - `PyPDF2` or `pypdf` (PDF processing)
-  - `python-docx` (DOCX processing)
-  - `Pillow` (image processing)
-  - `python-dotenv` (environment configuration)
-- Create `pyproject.toml` for project metadata
-- Set up virtual environment and install dependencies using uv:
-  ```bash
-  # Install uv (if not already installed)
-  pip install uv
-  
-  # Sync dependencies (creates .venv automatically)
-  uv sync
-  
-  # Install Agent Framework with --pre flag
-  uv pip install agent-framework-azure-ai --pre
-  ```
-
-### Step 2: Centralize Configuration in `.env`
-- **.env**: Single source of truth for all runtime settings
-  - Mirrors the previous `config.json` structure via well-named environment variables
-  - Stores Azure AI Foundry endpoints/models, Document Intelligence parameters, thresholds, and server ports
-  - Version-control safe defaults belong in `.env.example`; actual secrets live in `.env`
-
-- **src/config/settings.py**: Configuration loader
-  - Loads values exclusively from `.env`/environment variables
-  - Provides typed configuration using Pydantic models
-  - Supports managed identity authentication (recommended for production)
-
-### Step 3: Build Core Extraction Modules
-
-#### src/extraction/router.py
-- Analyze document type (PDF, DOCX, PNG, JPG)
-- Assess document complexity (scanned vs. digital, text density, image quality)
-- Route to appropriate extraction method based on configured thresholds
-- **Scanned PDFs must always route to Azure Document Intelligence; raise a routing error when DI is unavailable instead of falling back to vision models.**
-- Return extraction strategy with reasoning
-- Reference: Search `microsoft/agent-framework` GitHub for condition/switch-case workflow patterns
-
-#### src/extraction/document_parser.py
-- Decode base64 buffer
-- Extract text from digital PDFs using PyPDF2 or pypdf
-- Extract text from DOCX using python-docx
-- Convert images to appropriate format for vision APIs using Pillow
-- Handle multi-page documents and aggregate content
-- Validate buffer size against configured limits
-
-#### src/extraction/extractor.py
-- **LLM-based extraction**: Use Azure AI Foundry gpt-4o for text-first documents and its vision capabilities for PNG/JPG image inputs
-- **Azure Document Intelligence**: Mandatory OCR preprocessing path for scanned PDFs before handing results back to the LLM
-- Parse extraction results into structured JSON matching data element schemas
-- Handle pagination and content aggregation across all pages
-- Error handling and retry logic with exponential backoff
-- Reference: Search `microsoft/agent-framework` GitHub for multimodal and vision API examples
-
-#### src/extraction/validator.py
-- Cross-reference extracted data against original document content
-- Use Azure AI Foundry gpt-4o-mini to validate each field
-- Assign confidence scores (0-1) per extracted field
-- Check required fields against configured minimum threshold
-- Return validation result with per-field confidence and overall status
-
-### Step 4: Implement Microsoft Agent Framework Agents
-
-#### src/agents/extractor_agent.py
-- Microsoft Agent Framework agent for document extraction
-- State management for multi-page document processing
-- Coordinate router → parser → extractor pipeline using sequential workflow pattern
-- Aggregate results from all pages
-- Format output as JSON matching input schema
-- Handle errors and validation failures
-- Reference: Search `microsoft/agent-framework` GitHub for sequential workflow and fan-out/fan-in patterns
-
-#### src/agents/validator_agent.py
-- Microsoft Agent Framework agent for result validation
-- Receive extracted data and original document via handoff from extractor agent
-- Execute validation logic using validator module
-- Track validation state and confidence scores
-- Return final validated result or error with details
-- Reference: Search `microsoft/agent-framework` GitHub for agent handoff patterns
-
-#### src/agents/orchestrator.py
-- Orchestrate multi-agent workflow: Router → Extractor → Validator
-- Implement sequential execution with state passing between agents
-- Handle workflow errors and retry logic
-- Aggregate final results from validator agent
-- Reference: Search `microsoft/agent-framework` GitHub for workflow orchestration examples
-
-### Step 5: Create MCP HTTP/WebSocket Server
-
-#### src/interfaces/mcp_server.py
-- Implement HTTP/WebSocket server using Python MCP SDK
-- Integrate with Microsoft Agent Framework agents
-- Expose `extract_document_data` tool with schema:
-- Reference: Search `microsoft/agent-framework` GitHub for MCP integration examples
-  - **Input**:
-    - `documentBase64`: Base64 encoded document buffer
-    - `fileType`: Document type (pdf | docx | png | jpg)
-    - `dataElements`: Array of extraction schemas
-      - `name`: Field name
-      - `description`: What to extract
-      - `format`: Expected data format (string, number, date, etc.)
-      - `required`: Boolean flag
-  - **Output**:
-    - `success`: Boolean
-    - `extractedData`: Object with field names as keys
-    - `confidence`: Per-field confidence scores
-    - `errors`: Array of error messages if extraction failed
-
-- Wrap extractor and validator agents
-- Handle synchronous request/response flow
-- Implement timeout and error handling
-- Health check endpoint
-
-### Step 6: Create A2A Agent Interface
-
-#### src/interfaces/agent_server.py
-- Implement Microsoft Agent Framework distributed runtime server
-- Expose asynchronous extraction capabilities
-- Agent events/messages:
-  - `document.extraction.requested`: Trigger extraction workflow
-  - `document.extraction.completed`: Return results
-  - `document.extraction.failed`: Report errors
-- Enable agent-to-agent communication patterns
-- State persistence for long-running operations
-- Event-driven orchestration support
-- Reference: Search `microsoft/agent-framework` GitHub for distributed agent execution examples
-
-### Step 7: Add Azure Container App Deployment
-
-#### Dockerfile
-- Multi-stage build:
-  - Stage 1: Install Python dependencies
-  - Stage 2: Production runtime with minimal dependencies
-- Python 3.11+ base image (official python:3.11-slim)
-- Copy requirements.txt and install with `pip install agent-framework-azure-ai --pre`
-- Copy application code
-- Expose ports 8000 (MCP) and 8001 (A2A)
-- Health check configuration
-- Non-root user for security
-
-#### .dockerignore
-- Exclude .venv, __pycache__, .git, test files, documentation, *.pyc
-- Include only necessary files for container build
-
-#### azure-container-app.yaml
-- Container App manifest configuration:
-  - Container image reference
-  - Environment variables for Azure AI Foundry connection string, endpoints
-  - Dual HTTP ingress configuration (ports 8000, 8001)
-  - Health probes (liveness, readiness)
-  - Resource limits (CPU, memory)
-  - Auto-scaling rules based on HTTP request rate
-  - Managed identity for Azure service authentication (recommended over API keys)
-
-## Data Flow
-
-### MCP Tool Flow (Synchronous)
-1. MCP client sends `extract_document_data` request with base64 document and schemas
-2. MCP server validates input and buffer size
-3. Extractor agent processes document (router → parser → extractor)
-4. Validator agent verifies extracted data and assigns confidence scores
-5. MCP server returns JSON response with extracted data and confidence scores
-
-### A2A Agent Flow (Asynchronous)
-1. Calling agent sends `document.extraction.requested` event
-2. Extractor agent receives event and begins processing
-3. Multi-page documents processed in parallel where possible
-4. Validator agent verifies results asynchronously
-5. Extractor agent emits `document.extraction.completed` event with results
-6. Calling agent receives event and continues workflow
-
-## Configuration Example
-
-```json
-{
-  "minConfidenceThreshold": 0.8,
-  "maxBufferSizeMB": 10,
-  "azureDocumentIntelligence": {
-    "endpoint": "https://YOUR_ENDPOINT.cognitiveservices.azure.com/",
-    "key": "YOUR_KEY"
-  },
-  "azureAIFoundry": {
-    "projectEndpoint": "https://YOUR_PROJECT.api.azureml.ms",
-    "connectionString": "YOUR_CONNECTION_STRING",
-    "deployments": {
-      "extraction": "gpt-4o",
-      "validation": "gpt-4o-mini"
-    },
-    "useManagedIdentity": true
-  },
-  "routingThresholds": {
-    "useDocumentIntelligence": {
-      "lowTextDensity": true,
-      "poorImageQuality": true
-    }
-  },
-  "serverPorts": {
-    "mcp": 8000,
-    "a2a": 8001
-  }
-}
-```
-
-## Usage Examples
-
-### MCP Tool Usage
-```json
-// From Claude Desktop or MCP client
-{
-  "tool": "extract_document_data",
-  "arguments": {
-    "documentBase64": "JVBERi0xLjQK...",
-    "fileType": "pdf",
-    "dataElements": [
-      {
-        "name": "invoiceNumber",
-        "description": "The invoice number from the document",
-        "format": "string",
-        "required": true
-      },
-      {
-        "name": "totalAmount",
-        "description": "The total amount due",
-        "format": "number",
-        "required": true
-      },
-      {
-        "name": "dueDate",
-        "description": "Payment due date",
-        "format": "date",
-        "required": false
-      }
-    ]
-  }
-}
-```
-
-### A2A Agent Usage
-```python
-# From orchestrating agent using Microsoft Agent Framework
-from agent_framework import Agent
-
-# Send extraction request to agent
-await agent.send_message(
-    'document.extraction.requested',
-    {
-        'documentBase64': base64_buffer,
-        'fileType': 'pdf',
-        'dataElements': schemas
-    }
-)
-
-# Receive results
-result = await agent.receive_message('document.extraction.completed')
-print(f"Extracted: {result['extractedData']}")
-print(f"Confidence: {result['confidence']}")
-```
-
-## Deployment
-
-### Local Development
-```bash
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-
-# Install dependencies (--pre flag required for Agent Framework preview)
-pip install agent-framework-azure-ai --pre
-pip install -r requirements.txt
-
-# Run development server
-python src/main.py
-```
-
-⚠️ **Important**: The `--pre` flag is **required** while Microsoft Agent Framework is in preview.
-
-### Azure Container App Deployment
-```bash
-# Build container
-docker build -t agent-extractor:latest .
-
-# Push to Azure Container Registry
-az acr build --registry YOUR_ACR --image agent-extractor:latest .
-
-# Deploy to Container App with managed identity
-az containerapp create \
-  --name agent-extractor \
-  --resource-group YOUR_RG \
-  --environment YOUR_ENV \
-  --image YOUR_ACR.azurecr.io/agent-extractor:latest \
-  --ingress external \
-  --target-port 8000 \
-  --user-assigned YOUR_MANAGED_IDENTITY_ID \
-  --env-vars \
-    AZURE_AI_FOUNDRY_ENDPOINT=YOUR_ENDPOINT \
-    USE_MANAGED_IDENTITY=true
-```
-
-## Future Enhancements
-- Support for additional document formats (Excel, TXT, HTML)
-- Batch processing for multiple documents
-- Streaming results for large documents
-- Custom extraction models fine-tuned for specific document types
-- Caching layer for repeated extractions
-- Audit logging and telemetry
-- Multi-language document support
+## Implementation Checklist
+- Dependencies: `agent-framework-azure-ai --pre`, `@modelcontextprotocol/sdk` (Python), `azure-ai-formrecognizer`, `pypdf`, `python-docx`, `Pillow`, `python-dotenv`.
+- Configuration: load all secrets/endpoints via `.env` into `src/config/settings.py`; include min confidence, buffer limit, routing thresholds, MCP/A2A ports.
+- Deployment: package for Azure Container Apps (python:3.11-slim, uv/`pip install agent-framework-azure-ai --pre`, exposed ports 8000/8001, managed identity auth).
+- Observability: capture router decisions, validator outcomes, and per-field status in logs to satisfy traceability requirements.
