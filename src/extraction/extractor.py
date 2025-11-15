@@ -319,7 +319,7 @@ class Extractor:
         if not self.doc_intelligence_client:
             raise DocumentIntelligenceNotConfiguredError(
                 "Azure Document Intelligence not configured. "
-                "Add azureDocumentIntelligence section to config.json",
+                "Set AZURE_DOCUMENT_INTELLIGENCE_* values in your .env",
             )
         
         try:

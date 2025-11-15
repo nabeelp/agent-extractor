@@ -94,23 +94,34 @@ az login --tenant YOUR_TENANT_ID
 
 ### 4. Configure Environment
 
-Create a `.env` file in the project root (optional - most settings in `config.json`):
+Create a `.env` file in the project root (**required** – it's now the single source of truth):
 
 ```env
-# Authentication: Uses Entra ID (Azure AD) via DefaultAzureCredential
-# Local: Ensure you've run 'az login'
-# Production: Managed identity configured in Azure Container Apps
+# Azure AI Foundry
+AZURE_AI_FOUNDRY_ENDPOINT=https://npaifoundry.cognitiveservices.azure.com/
+AZURE_EXTRACTION_MODEL=gpt-4o
+AZURE_VALIDATION_MODEL=gpt-4o-mini
 
-# Optional: Specify tenant ID if using multiple tenants
-# AZURE_TENANT_ID=your_tenant_id
+# Azure Document Intelligence (required for scanned PDFs)
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://YOUR_ENDPOINT.cognitiveservices.azure.com/
+AZURE_DOCUMENT_INTELLIGENCE_USE_MANAGED_IDENTITY=true
 
-# Optional: Override config.json values
-# MCP_SERVER_PORT=8000
-# MIN_CONFIDENCE_THRESHOLD=0.8
-# MAX_BUFFER_SIZE_MB=10
+# Server + extraction settings
+MCP_SERVER_PORT=8000
+A2A_SERVER_PORT=8001
+MIN_CONFIDENCE_THRESHOLD=0.8
+MAX_BUFFER_SIZE_MB=10
+ROUTING_TEXT_DENSITY_THRESHOLD=100
+ROUTING_LOW_RESOLUTION_THRESHOLD=500000
+ROUTING_USE_DI_LOW_TEXT_DENSITY=true
+ROUTING_USE_DI_POOR_IMAGE_QUALITY=true
+
+# Optional
+# AZURE_TENANT_ID=your-tenant-id
+# AZURE_USE_MANAGED_IDENTITY=false
 ```
 
-Edit `config.json` to set your Azure AI Foundry endpoint and model deployment names.
+See `.env.example` for the full list of supported variables.
 
 **Note**: This solution uses **Entra ID authentication** (no API keys required). Ensure you have appropriate Azure RBAC permissions on the AI Foundry project.
 
@@ -220,27 +231,28 @@ diagnose failures without digging through server logs.
 
 ## Configuration
 
-Edit `config.json` to customize:
+All runtime settings live in `.env` (backed by `.env.example`). Key variables:
 
-- `azureAIFoundry.projectEndpoint`: Your Azure AI Foundry project endpoint
-- `azureAIFoundry.extractionModel`: Model deployment name (default: gpt-4o)
-- `serverPorts.mcp`: MCP server port (default: 8000)
-- `minConfidenceThreshold`: Minimum confidence for required fields (default: 0.8)
-- `maxBufferSizeMB`: Maximum document size in MB (default: 10)
-- `prompts.extraction`: System prompt for data extraction (customizable)
+- `AZURE_AI_FOUNDRY_ENDPOINT`: Azure AI Foundry project endpoint
+- `AZURE_EXTRACTION_MODEL` / `AZURE_VALIDATION_MODEL`: Deployment names
+- `AZURE_DOCUMENT_INTELLIGENCE_*`: Endpoint, key/managed identity toggle
+- `MCP_SERVER_PORT` / `A2A_SERVER_PORT`: Server ports (default 8000/8001)
+- `MIN_CONFIDENCE_THRESHOLD` / `MAX_BUFFER_SIZE_MB`: Extraction safeguards
+- `ROUTING_*`: Thresholds controlling when Document Intelligence is used
+- `EXTRACTION_PROMPT` / `VALIDATION_PROMPT`: Optional custom system prompts
 
-See [config.json](config.json) and [AGENTS.md](AGENTS.md) for details.
+Refer to `.env.example` and [AGENTS.md](AGENTS.md) for the complete matrix and guidance.
 
 ## Troubleshooting
 
 ### Server won't start
 
-**Problem**: `ValueError: Required environment variable missing` or `FileNotFoundError: Configuration file not found`
+**Problem**: `ValueError: Required environment variable missing`
 
 **Solution**:
-1. Ensure `config.json` exists in the project root
+1. Ensure `.env` exists in the project root (copy from `.env.example`)
 2. Run `az login` to authenticate with Azure
-3. Verify your Azure AI Foundry endpoint in `config.json`
+3. Verify your Azure AI Foundry entries (endpoint + deployment names) in `.env`
 
 ### "Required field not found" error
 
@@ -315,7 +327,6 @@ agent-extractor/
 │       ├── mcp_server.py
 │       └── agent_server.py
 ├── tests/               # Unit and integration tests
-├── config.json          # Default configuration
 ├── requirements.txt     # Python dependencies
 └── pyproject.toml       # Project metadata
 ```

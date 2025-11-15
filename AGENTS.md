@@ -84,20 +84,16 @@ Build a greenfield document extraction agent using Microsoft Agent Framework (Py
   uv pip install agent-framework-azure-ai --pre
   ```
 
-### Step 2: Create JSON Configuration System
-- **config.json**: Default configuration values
-  - `minConfidenceThreshold`: Minimum confidence score for required fields (default: 0.8)
-  - `maxBufferSizeMB`: Maximum document buffer size in MB (default: 10)
-  - `azureDocumentIntelligence`: Endpoint and key (or use managed identity). **Required for scanned PDFs; requests fail fast if missing.**
-  - `azureAIFoundry`: Project endpoint, connection string, and model deployment names (gpt-4o, gpt-4o-mini)
-  - `routingThresholds`: Criteria for choosing extraction method
-  - `serverPorts`: MCP server (8000), A2A server (8001)
+### Step 2: Centralize Configuration in `.env`
+- **.env**: Single source of truth for all runtime settings
+  - Mirrors the previous `config.json` structure via well-named environment variables
+  - Stores Azure AI Foundry endpoints/models, Document Intelligence parameters, thresholds, and server ports
+  - Version-control safe defaults belong in `.env.example`; actual secrets live in `.env`
 
 - **src/config/settings.py**: Configuration loader
-  - Load and validate config.json
-  - Provide typed configuration using Pydantic or dataclasses
-  - Environment variable override support for secrets (.env file)
-  - Support for managed identity authentication (recommended for production)
+  - Loads values exclusively from `.env`/environment variables
+  - Provides typed configuration using Pydantic models
+  - Supports managed identity authentication (recommended for production)
 
 ### Step 3: Build Core Extraction Modules
 

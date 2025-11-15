@@ -10,7 +10,7 @@ from src.extraction.validator import Validator
 
 @pytest.fixture(scope="module")
 def settings():
-    return load_settings("config.json")
+    return load_settings()
 
 
 @pytest.mark.asyncio

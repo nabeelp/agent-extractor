@@ -1,14 +1,12 @@
 """Configuration management for agent-extractor.
 
 Provides type-safe configuration using Pydantic models with validation,
-environment variable overrides, and Azure credential management.
+environment-variable driven settings, and Azure credential management.
 """
 
-import json
 import logging
 import os
-from pathlib import Path
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, Dict, Optional
 
 from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from dotenv import load_dotenv
@@ -22,6 +20,24 @@ log = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+def _to_bool(value: Optional[str]) -> Optional[bool]:
+    if value is None:
+        return None
+    return value.strip().lower() in {"true", "1", "yes", "on"}
+
+
+def _to_int(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    return int(value)
+
+
+def _to_float(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    return float(value)
 
 
 class AzureAIFoundryConfig(BaseModel):
@@ -217,7 +233,7 @@ Example format:
 
 
 class Settings(BaseSettings):
-    """Application settings with type-safe Pydantic models."""
+    """Application settings sourced entirely from environment variables."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -226,8 +242,6 @@ class Settings(BaseSettings):
         extra="ignore",
         populate_by_name=True,
     )
-
-    _config_file_path: ClassVar[Path] = Path("config.json")
 
     min_confidence_threshold: float = Field(
         default=0.8,
@@ -276,20 +290,6 @@ class Settings(BaseSettings):
     _credential: Optional[DefaultAzureCredential] = None
 
     @classmethod
-    def configure(cls, config_path: Path | str) -> None:
-        cls._config_file_path = Path(config_path)
-
-    @classmethod
-    def _json_config_settings_source(
-        cls,
-        _: Optional[BaseSettings] = None,
-    ) -> Dict[str, Any]:
-        if not cls._config_file_path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {cls._config_file_path}")
-        with cls._config_file_path.open("r", encoding="utf-8") as config_file:
-            return json.load(config_file)
-
-    @classmethod
     def _env_override_settings_source(
         cls,
         _: Optional[BaseSettings] = None,
@@ -300,7 +300,7 @@ class Settings(BaseSettings):
         # Azure Document Intelligence overrides
         di_endpoint = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT")
         di_key = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_KEY")
-        di_use_mi = os.getenv("AZURE_DOCUMENT_INTELLIGENCE_USE_MANAGED_IDENTITY")
+        di_use_mi = _to_bool(os.getenv("AZURE_DOCUMENT_INTELLIGENCE_USE_MANAGED_IDENTITY"))
         
         if any([di_endpoint, di_key, di_use_mi]):
             env_config["azureDocumentIntelligence"] = {}
@@ -308,14 +308,14 @@ class Settings(BaseSettings):
                 env_config["azureDocumentIntelligence"]["endpoint"] = di_endpoint
             if di_key:
                 env_config["azureDocumentIntelligence"]["key"] = di_key
-            if di_use_mi:
-                env_config["azureDocumentIntelligence"]["useManagedIdentity"] = di_use_mi.lower() in ("true", "1", "yes")
+            if di_use_mi is not None:
+                env_config["azureDocumentIntelligence"]["useManagedIdentity"] = di_use_mi
         
         # Azure AI Foundry overrides
         foundry_endpoint = os.getenv("AZURE_AI_FOUNDRY_ENDPOINT")
         extraction_model = os.getenv("AZURE_EXTRACTION_MODEL")
         validation_model = os.getenv("AZURE_VALIDATION_MODEL")
-        use_mi = os.getenv("AZURE_USE_MANAGED_IDENTITY")
+        use_mi = _to_bool(os.getenv("AZURE_USE_MANAGED_IDENTITY"))
         
         if any([foundry_endpoint, extraction_model, validation_model, use_mi]):
             env_config["azureAIFoundry"] = {}
@@ -325,33 +325,58 @@ class Settings(BaseSettings):
                 env_config["azureAIFoundry"]["extractionModel"] = extraction_model
             if validation_model:
                 env_config["azureAIFoundry"]["validationModel"] = validation_model
-            if use_mi:
-                env_config["azureAIFoundry"]["useManagedIdentity"] = use_mi.lower() in ("true", "1", "yes")
+            if use_mi is not None:
+                env_config["azureAIFoundry"]["useManagedIdentity"] = use_mi
         
         # Server ports overrides
-        mcp_port = os.getenv("MCP_SERVER_PORT")
-        a2a_port = os.getenv("A2A_SERVER_PORT")
+        mcp_port = _to_int(os.getenv("MCP_SERVER_PORT"))
+        a2a_port = _to_int(os.getenv("A2A_SERVER_PORT"))
         
         if any([mcp_port, a2a_port]):
             env_config["serverPorts"] = {}
             if mcp_port:
-                env_config["serverPorts"]["mcp"] = int(mcp_port)
+                env_config["serverPorts"]["mcp"] = mcp_port
             if a2a_port:
-                env_config["serverPorts"]["a2a"] = int(a2a_port)
+                env_config["serverPorts"]["a2a"] = a2a_port
         
         # Top-level overrides
-        min_confidence = os.getenv("MIN_CONFIDENCE_THRESHOLD")
-        if min_confidence:
-            env_config["minConfidenceThreshold"] = float(min_confidence)
+        min_confidence = _to_float(os.getenv("MIN_CONFIDENCE_THRESHOLD"))
+        if min_confidence is not None:
+            env_config["minConfidenceThreshold"] = min_confidence
         
-        max_buffer = os.getenv("MAX_BUFFER_SIZE_MB")
-        if max_buffer:
-            env_config["maxBufferSizeMB"] = int(max_buffer)
+        max_buffer = _to_int(os.getenv("MAX_BUFFER_SIZE_MB"))
+        if max_buffer is not None:
+            env_config["maxBufferSizeMB"] = max_buffer
         
         tenant_id = os.getenv("AZURE_TENANT_ID")
         if tenant_id:
             env_config["azureTenantId"] = tenant_id
         
+        # Routing thresholds overrides
+        routing_text_density = _to_int(os.getenv("ROUTING_TEXT_DENSITY_THRESHOLD"))
+        routing_low_resolution = _to_int(os.getenv("ROUTING_LOW_RESOLUTION_THRESHOLD"))
+        routing_use_di_low_text = _to_bool(os.getenv("ROUTING_USE_DI_LOW_TEXT_DENSITY"))
+        routing_use_di_poor_image = _to_bool(os.getenv("ROUTING_USE_DI_POOR_IMAGE_QUALITY"))
+
+        if any([
+            routing_text_density is not None,
+            routing_low_resolution is not None,
+            routing_use_di_low_text is not None,
+            routing_use_di_poor_image is not None,
+        ]):
+            env_config["routingThresholds"] = {}
+            if routing_text_density is not None:
+                env_config["routingThresholds"]["textDensityThreshold"] = routing_text_density
+            if routing_low_resolution is not None:
+                env_config["routingThresholds"]["lowResolutionThreshold"] = routing_low_resolution
+
+            if routing_use_di_low_text is not None or routing_use_di_poor_image is not None:
+                env_config["routingThresholds"]["useDocumentIntelligence"] = {}
+                if routing_use_di_low_text is not None:
+                    env_config["routingThresholds"]["useDocumentIntelligence"]["lowTextDensity"] = routing_use_di_low_text
+                if routing_use_di_poor_image is not None:
+                    env_config["routingThresholds"]["useDocumentIntelligence"]["poorImageQuality"] = routing_use_di_poor_image
+
         # Prompts overrides
         extraction_prompt = os.getenv("EXTRACTION_PROMPT")
         validation_prompt = os.getenv("VALIDATION_PROMPT")
@@ -375,14 +400,15 @@ class Settings(BaseSettings):
         file_secret_settings,
     ):
         # Priority order (highest to lowest):
-        # 1. Environment variables (custom env override source)
-        # 2. Constructor arguments (init_settings)
-        # 3. config.json file (JSON config)
-        # 4. File secrets (file_secret_settings)
+        # 1. Flat environment variables mapped into nested structures
+        # 2. Standard environment variables / .env entries processed by Pydantic
+        # 3. Explicit constructor arguments
+        # 4. File secrets (if any)
         return (
             cls._env_override_settings_source,
+            env_settings,
+            dotenv_settings,
             init_settings,
-            cls._json_config_settings_source,
             file_secret_settings,
         )
 
@@ -463,10 +489,6 @@ class Settings(BaseSettings):
         log.info("Max buffer size (MB): %s", self.max_buffer_size_mb)
 
 
-# Configure default config path once module is imported
-Settings.configure(Path("config.json"))
-
-
 # Global settings instance
 _settings: Optional[Settings] = None
 
@@ -479,8 +501,9 @@ def get_settings() -> Settings:
     return _settings
 
 
-def load_settings(config_path: str = "config.json") -> Settings:
-    Settings.configure(config_path)
+def load_settings(config_path: str | None = None) -> Settings:
+    if config_path:
+        log.debug("load_settings called with config_path=%s but only .env is used", config_path)
     global _settings
     _settings = Settings()
     _settings.validate_on_startup()
