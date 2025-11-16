@@ -11,6 +11,7 @@ from agent_framework._types import ChatMessage
 
 from ..config.settings import Settings
 from ..exceptions import InvalidExtractionResultError, ValidationError
+from .structured_parser import StructuredResponseParser
 
 
 log = logging.getLogger(__name__)
@@ -150,36 +151,19 @@ Return ONLY the JSON object, no additional text."""
 
 class ValidationResultParser:
     """Parse LLM validation responses into structured results."""
-    
-    @staticmethod
+
+    def __init__(self) -> None:
+        self._parser = StructuredResponseParser("validation response")
+
     def parse(
+        self,
         response_text: str,
         extracted_data: Dict[str, Any],
     ) -> Dict[str, FieldValidationResult]:
-        """Parse validation response into field results.
-        
-        Args:
-            response_text: LLM response text
-            extracted_data: Original extracted data
-            
-        Returns:
-            Dictionary of field validation results
-            
-        Raises:
-            InvalidExtractionResultError: If parsing fails
-        """
+        """Parse validation response into field results."""
         try:
-            response_text = response_text.strip()
-            start_idx = response_text.find("{")
-            end_idx = response_text.rfind("}")
-            
-            if start_idx == -1 or end_idx == -1:
-                raise InvalidExtractionResultError("No JSON object found in validation response")
-            
-            json_text = response_text[start_idx : end_idx + 1]
-            validation_data = json.loads(json_text)
-            
-            # Convert to FieldValidationResult objects
+            validation_data = self._parser.parse(response_text)
+
             field_results = {}
             for field_name, field_data in validation_data.items():
                 field_results[field_name] = FieldValidationResult(
@@ -189,13 +173,11 @@ class ValidationResultParser:
                     extracted_value=extracted_data.get(field_name),
                     reasoning=field_data.get("reasoning"),
                 )
-            
+
             return field_results
-            
-        except json.JSONDecodeError as exc:
-            raise InvalidExtractionResultError(
-                f"Failed to parse validation result as JSON: {exc}"
-            ) from exc
+
+        except InvalidExtractionResultError:
+            raise
         except (KeyError, TypeError, ValueError) as exc:
             raise InvalidExtractionResultError(
                 f"Invalid validation result structure: {exc}"

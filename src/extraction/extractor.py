@@ -1,6 +1,4 @@
 """Data extraction using Azure AI Foundry models and Azure Document Intelligence."""
-
-import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -21,6 +19,7 @@ from ..exceptions import (
     TextExtractionError,
     VisionExtractionError,
 )
+from .structured_parser import StructuredResponseParser
 
 
 log = logging.getLogger(__name__)
@@ -127,25 +126,13 @@ class PromptBuilder:
 
 
 class ExtractionResultParser:
-    """Parse LLM responses into structured results."""
+    """Parse LLM responses into structured extraction results."""
 
-    @staticmethod
-    def parse(result_text: str) -> Dict[str, Any]:
-        try:
-            result_text = result_text.strip()
-            start_idx = result_text.find("{")
-            end_idx = result_text.rfind("}")
+    def __init__(self) -> None:
+        self._parser = StructuredResponseParser("extraction result")
 
-            if start_idx == -1 or end_idx == -1:
-                raise InvalidExtractionResultError("No JSON object found in response")
-
-            json_text = result_text[start_idx : end_idx + 1]
-            return json.loads(json_text)
-
-        except json.JSONDecodeError as exc:
-            raise InvalidExtractionResultError(
-                f"Failed to parse extraction result as JSON: {exc}"
-            ) from exc
+    def parse(self, result_text: str) -> Dict[str, Any]:
+        return self._parser.parse(result_text)
 
 
 def build_helpers(settings: Settings) -> ExtractionHelpers:
